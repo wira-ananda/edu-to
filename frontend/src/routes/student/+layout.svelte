@@ -8,7 +8,7 @@
     type AppUser,
   } from "$lib/auth";
   import AppShell from "$lib/components/layout/AppShell.svelte";
-  import { adminNavGroups } from "$lib/config/navigation";
+  import { studentNavGroups } from "$lib/config/navigation";
 
   let { children } = $props();
 
@@ -24,15 +24,16 @@
         return;
       }
 
-      if (currentUser.role !== "ADMIN") {
-        await goto("/student");
+      if (currentUser.role !== "STUDENT") {
+        await goto("/admin");
         return;
       }
 
-      await apiFetch("/admin/check");
+      await apiFetch("/student/check");
 
       user = currentUser;
-    } catch {
+    } catch (error) {
+      console.error(error);
       await goto("/login");
     } finally {
       loading = false;
@@ -47,13 +48,13 @@
 
 {#if loading}
   <main class="flex min-h-screen items-center justify-center bg-slate-50">
-    <p class="text-sm font-semibold text-slate-500">Memuat admin...</p>
+    <p class="text-sm font-semibold text-slate-500">Memuat siswa...</p>
   </main>
 {:else if user}
   <AppShell
     {user}
-    panelLabel="ADMIN PANEL"
-    navGroups={adminNavGroups}
+    panelLabel="STUDENT PANEL"
+    navGroups={studentNavGroups}
     onLogout={handleLogout}
   >
     {@render children()}

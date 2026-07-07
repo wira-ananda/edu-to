@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import type {
@@ -31,6 +32,17 @@
     );
 
     subjects = result.subjects;
+
+    const selectedSubjectId = page.url.searchParams.get("subjectId");
+
+    if (
+      selectedSubjectId &&
+      result.subjects.some((subject) => subject.id === selectedSubjectId)
+    ) {
+      subjectId = selectedSubjectId;
+      return;
+    }
+
     subjectId = result.subjects[0]?.id ?? "";
   }
 

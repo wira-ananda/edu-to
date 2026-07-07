@@ -181,6 +181,97 @@ adminRoutes.get("/questions", async (c) => {
   });
 });
 
+adminRoutes.get("/question-banks", async (c) => {
+  const subjects = await prisma.subject.findMany({
+    include: {
+      _count: {
+        select: {
+          questions: true,
+        },
+      },
+      questions: {
+        select: {
+          difficultyLevel: true,
+          weightPriority: true,
+        },
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const banks = subjects.map((subject) => {
+    const difficultyCounts = {
+      LOW: 0,
+      MEDIUM: 0,
+      HIGH: 0,
+    };
+
+    const priorityCounts = {
+      LOW: 0,
+      NORMAL: 0,
+      HIGH: 0,
+      VERY_HIGH: 0,
+    };
+
+    for (const question of subject.questions) {
+      difficultyCounts[question.difficultyLevel] += 1;
+      priorityCounts[question.weightPriority] += 1;
+    }
+
+    return {
+      id: subject.id,
+      name: subject.name,
+      totalQuestions: subject._count.questions,
+      difficultyCounts,
+      priorityCounts,
+      createdAt: subject.createdAt,
+      updatedAt: subject.updatedAt,
+    };
+  });
+
+  return c.json({
+    ok: true,
+    banks,
+  });
+});
+
+adminRoutes.post("/subjects", async (c) => {
+  const body = await c.req.json().catch(() => null);
+
+  const parsed = z
+    .object({
+      name: z.string().min(2, "Nama mata pelajaran wajib diisi"),
+    })
+    .safeParse(body);
+
+  if (!parsed.success) {
+    return c.json(
+      {
+        ok: false,
+        message: parsed.error.issues[0]?.message ?? "Data tidak valid",
+      },
+      400,
+    );
+  }
+
+  const subject = await prisma.subject.upsert({
+    where: {
+      name: parsed.data.name.trim(),
+    },
+    update: {},
+    create: {
+      name: parsed.data.name.trim(),
+    },
+  });
+
+  return c.json({
+    ok: true,
+    subject,
+  });
+});
+
 adminRoutes.get("/questions/:id", async (c) => {
   const id = c.req.param("id");
 

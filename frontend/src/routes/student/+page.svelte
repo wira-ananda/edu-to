@@ -1,78 +1,52 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { onMount } from "svelte";
-  import {
-    getCurrentUser,
-    logout as logoutAuth,
-    type AppUser,
-  } from "$lib/auth";
-  import { apiFetch } from "$lib/api";
+  import { getContext } from "svelte";
+  import type { AppUser } from "$lib/auth";
 
-  let loading = $state(true);
-  let user: AppUser | null = $state(null);
-
-  onMount(async () => {
-    try {
-      const currentUser = await getCurrentUser();
-
-      if (!currentUser) {
-        await goto("/login");
-        return;
-      }
-
-      await apiFetch("/student/check");
-
-      if (currentUser.role !== "STUDENT") {
-        await goto("/admin");
-        return;
-      }
-
-      user = currentUser;
-    } catch {
-      await goto("/login");
-    } finally {
-      loading = false;
-    }
-  });
-
-  async function handleLogout() {
-    await logoutAuth();
-    await goto("/login");
-  }
+  const user = getContext<AppUser>("appUser");
 </script>
 
-<main class="min-h-screen bg-slate-50 p-8">
-  <section class="mx-auto max-w-5xl">
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      {#if loading}
-        <p class="text-slate-600">Memuat...</p>
-      {:else if user}
-        <h1 class="text-2xl font-bold text-slate-900">Dashboard Siswa</h1>
+<section class="space-y-6">
+  <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-2xl font-bold text-slate-950">Dashboard Siswa</h2>
 
-        <p class="mt-2 text-slate-600">
-          Login sebagai {user.name} ({user.email})
+    <p class="mt-2 text-sm leading-6 text-slate-600">
+      Selamat datang,
+      <span class="font-bold text-slate-900">{user.name}</span>. Kamu dapat
+      memulai tryout dan melihat hasil belajar dari halaman ini.
+    </p>
+
+    <div class="mt-6 grid gap-4 md:grid-cols-3">
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <p class="text-sm font-semibold text-slate-500">Sekolah</p>
+        <p class="mt-2 text-lg font-bold text-slate-950">
+          {user.school ?? "-"}
         </p>
+      </div>
 
-        <p class="mt-1 text-sm font-semibold text-blue-900">
-          Role: {user.role}
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <p class="text-sm font-semibold text-slate-500">Kelas</p>
+        <p class="mt-2 text-lg font-bold text-slate-950">
+          {user.className ?? "-"}
         </p>
+      </div>
 
-        <p class="mt-2 text-sm text-slate-600">
-          Sekolah: {user.school ?? "-"}
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <p class="text-sm font-semibold text-slate-500">Role</p>
+        <p class="mt-2 text-lg font-bold text-slate-950">
+          {user.role}
         </p>
-
-        <p class="mt-1 text-sm text-slate-600">
-          Kelas: {user.className ?? "-"}
-        </p>
-
-        <button
-          type="button"
-          onclick={handleLogout}
-          class="mt-6 rounded-lg bg-red-600 px-4 py-2 font-semibold text-white"
-        >
-          Logout
-        </button>
-      {/if}
+      </div>
     </div>
-  </section>
-</main>
+
+    <div class="mt-6">
+      <button
+        type="button"
+        onclick={() => goto("/student/tryouts")}
+        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      >
+        Mulai Tryout
+      </button>
+    </div>
+  </div>
+</section>
