@@ -26,7 +26,7 @@
     children,
   }: Props = $props();
 
-  setContext<AppUser>("appUser", user);
+  setContext<() => AppUser>("appUser", () => user);
 
   const currentPath = $derived(page.url.pathname);
 

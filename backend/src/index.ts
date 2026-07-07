@@ -5,8 +5,8 @@ import { z } from "zod";
 import { prisma } from "./lib/prisma";
 import { supabaseAdmin } from "./lib/supabase-admin";
 import { authMiddleware } from "./middlewares/auth";
-import { roleMiddleware } from "./middlewares/role";
 import { adminRoutes } from "./routes/admin";
+import { studentRoutes } from "./routes/student";
 import type { AppEnv } from "./types/hono";
 
 const app = new Hono<AppEnv>();
@@ -45,6 +45,8 @@ app.get("/health/db", async (c) => {
   const totalUsers = await prisma.user.count();
   const totalSubjects = await prisma.subject.count();
   const totalQuestions = await prisma.question.count();
+  const totalTryouts = await prisma.tryout.count();
+  const totalSessions = await prisma.tryoutSession.count();
 
   return c.json({
     ok: true,
@@ -52,6 +54,8 @@ app.get("/health/db", async (c) => {
     totalUsers,
     totalSubjects,
     totalQuestions,
+    totalTryouts,
+    totalSessions,
   });
 });
 
@@ -171,22 +175,8 @@ app.get("/me", authMiddleware, async (c) => {
   });
 });
 
-app.get(
-  "/student/check",
-  authMiddleware,
-  roleMiddleware(["STUDENT"]),
-  async (c) => {
-    const user = c.get("user");
-
-    return c.json({
-      ok: true,
-      message: "Student authorized",
-      user,
-    });
-  },
-);
-
 app.route("/admin", adminRoutes);
+app.route("/student", studentRoutes);
 
 app.notFound((c) => {
   return c.json(

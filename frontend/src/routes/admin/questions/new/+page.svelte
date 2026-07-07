@@ -9,7 +9,7 @@
     DifficultyLevel,
     Subject,
     WeightPriority,
-  } from "$lib/types/admin";
+  } from "$lib/types/questions";
 
   let subjects = $state<Subject[]>([]);
   let subjectId = $state("");

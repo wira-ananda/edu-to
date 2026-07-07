@@ -3,7 +3,8 @@
   import { getContext } from "svelte";
   import type { AppUser } from "$lib/auth";
 
-  const user = getContext<AppUser>("appUser");
+  const getAppUser = getContext<() => AppUser>("appUser");
+  const user = $derived(getAppUser());
 </script>
 
 <section class="space-y-6">

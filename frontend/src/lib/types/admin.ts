@@ -1,37 +1,41 @@
-export type DifficultyLevel = "LOW" | "MEDIUM" | "HIGH";
-export type WeightPriority = "LOW" | "NORMAL" | "HIGH" | "VERY_HIGH";
-export type AnswerOption = "A" | "B" | "C" | "D";
-
-export type Subject = {
+export type AdminTryoutItem = {
   id: string;
-  name: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-export type Question = {
-  id: string;
-  subjectId: string;
-  questionText: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  correctAnswer: AnswerOption;
-  difficultyLevel: DifficultyLevel;
-  difficultyScore: number;
-  detectedIndicators: string[];
-  weightPriority: WeightPriority;
-  weight: number;
+  title: string;
+  totalQuestions: number;
+  durationMinutes: number;
   createdAt: string;
   updatedAt: string;
-  subject: Subject;
+  bank: {
+    id: string;
+    name: string;
+    totalAvailableQuestions: number;
+  };
+  totalSessions: number;
 };
 
-export type AnalyzeResult = {
-  difficultyLevel: DifficultyLevel;
-  difficultyScore: number;
-  detectedIndicators: string[];
-  weightPriority: WeightPriority;
-  weight: number;
+export type AdminTryoutsResponse = {
+  ok: boolean;
+  tryouts: AdminTryoutItem[];
+};
+
+export type AdminTryoutResponse = {
+  ok: boolean;
+  tryout: AdminTryoutItem & {
+    subjectId: string;
+  };
+};
+
+export type CreateTryoutPayload = {
+  subjectId: string;
+  title: string;
+  totalQuestions: number;
+  durationMinutes: number;
+};
+
+export type UpdateTryoutPayload = CreateTryoutPayload;
+
+export type MutateTryoutResponse = {
+  ok: boolean;
+  message: string;
+  tryout: unknown;
 };

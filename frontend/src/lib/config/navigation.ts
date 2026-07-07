@@ -19,6 +19,26 @@ export const adminNavGroups: AppNavGroup[] = [
         href: "/admin/questions",
         icon: "book-open",
       },
+      {
+        label: "Tambah Soal",
+        href: "/admin/questions/new",
+        icon: "plus-circle",
+      },
+    ],
+  },
+  {
+    title: "Manajemen Tryout",
+    items: [
+      {
+        label: "Daftar Tryout",
+        href: "/admin/tryouts",
+        icon: "file-text",
+      },
+      {
+        label: "Buat Tryout",
+        href: "/admin/tryouts/new",
+        icon: "plus-circle",
+      },
     ],
   },
   {

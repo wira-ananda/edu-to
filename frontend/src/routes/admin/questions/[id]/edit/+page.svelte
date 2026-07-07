@@ -10,7 +10,7 @@
     Question,
     Subject,
     WeightPriority,
-  } from "$lib/types/admin";
+  } from "$lib/types/questions";
 
   const id = page.params.id;
 
