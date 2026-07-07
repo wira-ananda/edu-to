@@ -19,11 +19,6 @@ export const adminNavGroups: AppNavGroup[] = [
         href: "/admin/questions",
         icon: "book-open",
       },
-      {
-        label: "Tambah Soal",
-        href: "/admin/questions/new",
-        icon: "plus-circle",
-      },
     ],
   },
   {
@@ -41,21 +36,21 @@ export const adminNavGroups: AppNavGroup[] = [
       },
     ],
   },
-  {
-    title: "Evaluasi & Log",
-    items: [
-      {
-        label: "WRS Logs",
-        href: "/admin/wrs-logs",
-        icon: "activity",
-      },
-      {
-        label: "Laporan Tryout",
-        href: "/admin/reports",
-        icon: "file-text",
-      },
-    ],
-  },
+  // {
+  //   title: "Evaluasi & Log",
+  //   items: [
+  //     {
+  //       label: "WRS Logs",
+  //       href: "/admin/wrs-logs",
+  //       icon: "activity",
+  //     },
+  //     {
+  //       label: "Laporan Tryout",
+  //       href: "/admin/reports",
+  //       icon: "file-text",
+  //     },
+  //   ],
+  // },
   {
     title: "Sistem",
     items: [
