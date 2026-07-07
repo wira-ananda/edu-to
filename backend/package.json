@@ -1,20 +1,19 @@
 {
-  "name": "backend",
-  "type": "module",
-  "scripts": {
-    "dev": "bun run --hot src/index.ts",
-    "db:generate": "bunx prisma generate --schema ../prisma/schema.prisma",
-    "db:migrate": "bunx prisma migrate dev --schema ../prisma/schema.prisma"
-  },
-  "dependencies": {
-    "@prisma/client": "latest",
-    "@supabase/supabase-js": "latest",
-    "dotenv": "latest",
-    "hono": "latest",
-    "zod": "latest"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "prisma": "latest"
-  }
+	"name": "backend",
+	"type": "module",
+	"scripts": {
+		"dev": "bun run --hot src/index.ts",
+		"seed": "bun run src/seed.ts"
+	},
+	"dependencies": {
+		"@prisma/adapter-neon": "latest",
+		"@prisma/client": "latest",
+		"@supabase/supabase-js": "latest",
+		"dotenv": "latest",
+		"hono": "latest",
+		"zod": "latest"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	}
 }

@@ -4,6 +4,12 @@
   "workspaces": {
     "": {
       "name": "edutryout",
+      "dependencies": {
+        "dotenv": "latest",
+      },
+      "devDependencies": {
+        "prisma": "latest",
+      },
     },
     "backend": {
       "name": "backend",
@@ -23,6 +29,7 @@
       "name": "frontend",
       "version": "0.0.1",
       "dependencies": {
+        "@supabase/supabase-js": "^2.110.0",
         "@tailwindcss/vite": "^4.3.2",
         "tailwindcss": "^4.3.2",
       },
