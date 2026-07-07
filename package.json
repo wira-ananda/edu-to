@@ -1,22 +1,23 @@
 {
-	"name": "edutryout",
-	"private": true,
-	"workspaces": [
-		"frontend",
-		"backend"
-	],
-	"scripts": {
-		"dev": "bun run dev:backend & bun run dev:frontend",
-		"dev:frontend": "cd frontend && bun run dev",
-		"dev:backend": "cd backend && bun run dev",
-		"db:generate": "bunx prisma generate",
-		"db:migrate": "bunx prisma migrate dev",
-		"seed": "cd backend && bun run seed"
-	},
-	"devDependencies": {
-		"prisma": "latest"
-	},
-	"dependencies": {
-		"dotenv": "latest"
-	}
+  "name": "edutryout",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "bun run dev:backend & bun run dev:frontend",
+    "dev:frontend": "cd frontend && bun run dev",
+    "dev:backend": "cd backend && bun run dev",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate dev",
+    "seed": "cd backend && bun run seed",
+    "seed:questions": "cd backend && bun run seed:questions"
+  },
+  "devDependencies": {
+    "prisma": "latest"
+  },
+  "dependencies": {
+    "dotenv": "latest"
+  }
 }

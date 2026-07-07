@@ -18,6 +18,13 @@ enum DifficultyLevel {
   HIGH
 }
 
+enum WeightPriority {
+  LOW
+  NORMAL
+  HIGH
+  VERY_HIGH
+}
+
 enum SessionStatus {
   ONGOING
   FINISHED
@@ -55,25 +62,33 @@ model Subject {
 }
 
 model Question {
-  id                 String          @id @default(cuid())
-  subjectId          String
-  questionText       String
-  optionA            String
-  optionB            String
-  optionC            String
-  optionD            String
-  correctAnswer      AnswerOption
+  id            String       @id @default(cuid())
+  subjectId     String
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctAnswer AnswerOption
+
   difficultyLevel    DifficultyLevel
   difficultyScore    Int
   detectedIndicators Json
-  weight             Int
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+
+  weightPriority WeightPriority @default(NORMAL)
+  weight         Int            @default(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
   answers Answers[]
   wrsLogs WrsLog[]
+
+  @@index([subjectId])
+  @@index([difficultyLevel])
+  @@index([subjectId, difficultyLevel])
 }
 
 model Tryout {

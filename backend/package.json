@@ -1,19 +1,20 @@
 {
-	"name": "backend",
-	"type": "module",
-	"scripts": {
-		"dev": "bun run --hot src/index.ts",
-		"seed": "bun run src/seed.ts"
-	},
-	"dependencies": {
-		"@prisma/adapter-neon": "latest",
-		"@prisma/client": "latest",
-		"@supabase/supabase-js": "latest",
-		"dotenv": "latest",
-		"hono": "latest",
-		"zod": "latest"
-	},
-	"devDependencies": {
-		"@types/bun": "latest"
-	}
+  "name": "backend",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "seed": "bun run src/seed/seed.ts",
+    "seed:questions": "bun run src/seed/seed-questions.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-neon": "latest",
+    "@prisma/client": "latest",
+    "@supabase/supabase-js": "latest",
+    "dotenv": "latest",
+    "hono": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
 }

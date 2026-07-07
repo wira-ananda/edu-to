@@ -6,14 +6,20 @@ import { prisma } from "./lib/prisma";
 import { supabaseAdmin } from "./lib/supabase-admin";
 import { authMiddleware } from "./middlewares/auth";
 import { roleMiddleware } from "./middlewares/role";
+import { adminRoutes } from "./routes/admin";
 import type { AppEnv } from "./types/hono";
 
 const app = new Hono<AppEnv>();
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
+
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173"],
+    origin: allowedOrigins,
     credentials: true,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -37,11 +43,15 @@ app.get("/", (c) => {
 
 app.get("/health/db", async (c) => {
   const totalUsers = await prisma.user.count();
+  const totalSubjects = await prisma.subject.count();
+  const totalQuestions = await prisma.question.count();
 
   return c.json({
     ok: true,
     database: "connected",
     totalUsers,
+    totalSubjects,
+    totalQuestions,
   });
 });
 
@@ -162,21 +172,6 @@ app.get("/me", authMiddleware, async (c) => {
 });
 
 app.get(
-  "/admin/check",
-  authMiddleware,
-  roleMiddleware(["ADMIN"]),
-  async (c) => {
-    const user = c.get("user");
-
-    return c.json({
-      ok: true,
-      message: "Admin authorized",
-      user,
-    });
-  },
-);
-
-app.get(
   "/student/check",
   authMiddleware,
   roleMiddleware(["STUDENT"]),
@@ -190,6 +185,8 @@ app.get(
     });
   },
 );
+
+app.route("/admin", adminRoutes);
 
 app.notFound((c) => {
   return c.json(
