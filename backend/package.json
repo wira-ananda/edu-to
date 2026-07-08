@@ -1,20 +1,30 @@
 {
-  "name": "backend",
+  "name": "edutryout-backend",
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
+    "dev": "bun --watch src/dev.ts",
+    "build": "bunx prisma generate --schema=./prisma/schema.prisma && bunx tsc --noEmit",
+    "start": "bun src/dev.ts",
+    "prisma:generate": "bunx prisma generate --schema=./prisma/schema.prisma",
+    "prisma:migrate": "bunx prisma migrate dev --schema=./prisma/schema.prisma",
     "seed": "bun run src/seed/seed.ts",
+    "prisma:deploy": "bunx prisma migrate deploy --schema=./prisma/schema.prisma",
     "seed:questions": "bun run src/seed/seed-questions.ts"
   },
   "dependencies": {
-    "@prisma/adapter-neon": "latest",
-    "@prisma/client": "latest",
-    "@supabase/supabase-js": "latest",
-    "dotenv": "latest",
-    "hono": "latest",
-    "zod": "latest"
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.110.1",
+    "dotenv": "^17.4.2",
+    "hono": "^4.12.28",
+    "ws": "^8.18.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.3.14",
+    "@types/ws": "^8.18.1",
+    "prisma": "^7.8.0",
+    "typescript": "^5.9.3"
   }
 }
