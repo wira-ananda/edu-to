@@ -10,7 +10,7 @@ import {
 import type {
   DifficultyLevel,
   WeightPriority,
-} from "../generated/prisma/client.js";
+} from "@prisma/client";
 import type { AppEnv } from "../types/hono.js";
 
 export const adminRoutes = new Hono<AppEnv>();

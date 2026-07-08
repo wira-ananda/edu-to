@@ -9,7 +9,7 @@ import {
   updateLevelAfterAnswer,
 } from "../lib/tryout-level.js";
 import type { AppEnv } from "../types/hono.js";
-import type { DifficultyLevel } from "../generated/prisma/client.js";
+import type { DifficultyLevel } from "@prisma/client";
 
 export const studentRoutes = new Hono<AppEnv>();
 

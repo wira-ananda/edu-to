@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { Role } from "../generated/prisma/client.js";
+import type { Role } from "@prisma/client";
 import type { AppEnv } from "../types/hono.js";
 
 export function roleMiddleware(

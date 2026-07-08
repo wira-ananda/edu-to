@@ -4,7 +4,7 @@ import {
   classifyQuestionDifficulty,
   getWeightFromPriority,
 } from "../lib/question-difficulty.js";
-import type { AnswerOption, WeightPriority } from "../generated/prisma/client.js";
+import type { AnswerOption, WeightPriority } from "@prisma/client";
 
 const TEST_PREFIX = "[TEST-BIO-SMA]";
 
