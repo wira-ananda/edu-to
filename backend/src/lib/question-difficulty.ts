@@ -1,15 +1,12 @@
-<<<<<<< Updated upstream
-import type { DifficultyLevel, WeightPriority } from "@prisma/client";
-=======
-<<<<<<< Updated upstream
-import type {
-  DifficultyLevel,
-  WeightPriority,
-} from "../generated/prisma/client";
-=======
-import type { DifficultyLevel, WeightPriority } from "../types/domain.ts";
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+import type { DifficultyLevel, WeightPriority } from "../types/domain.js";
+
+export type DifficultyInput =
+  | string
+  | {
+      questionText: string;
+      imageAltText?: string | null;
+      hasImage?: boolean;
+    };
 
 export type DifficultyResult = {
   difficultyLevel: DifficultyLevel;
@@ -40,116 +37,172 @@ const mediumKeywords = [
   "mengapa",
   "tentukan",
   "klasifikasikan",
+  "analisis sederhana",
 ];
 
 const hardKeywords = [
   "analisis",
-  "analisislah",
   "evaluasi",
-  "evaluasilah",
-  "prediksi",
   "simpulkan",
-  "berdasarkan kasus",
+  "buktikan",
+  "prediksi",
+  "strategi",
+  "kritisi",
+  "argumentasikan",
+  "interpretasikan",
+  "hubungkan dengan",
   "studi kasus",
-  "berdasarkan tabel",
-  "berdasarkan grafik",
-  "perhatikan wacana",
-  "perhatikan gambar",
+  "pemecahan masalah",
 ];
 
-function includesAny(text: string, keywords: string[]) {
-  return keywords.filter((keyword) => text.includes(keyword));
+const visualKeywords = [
+  "gambar",
+  "grafik",
+  "tabel",
+  "diagram",
+  "bagan",
+  "kurva",
+  "data",
+  "peta",
+  "struktur",
+  "ilustrasi",
+  "perhatikan",
+];
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function classifyQuestionDifficulty(
-  questionText: string,
-): DifficultyResult {
-  const text = questionText.toLowerCase().trim();
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-
-  let score = 0;
-  const detectedIndicators: string[] = [];
-
-  const easyMatches = includesAny(text, easyKeywords);
-  const mediumMatches = includesAny(text, mediumKeywords);
-  const hardMatches = includesAny(text, hardKeywords);
-
-  if (easyMatches.length > 0) {
-    score += 1;
-    detectedIndicators.push(
-      ...easyMatches.map((keyword) => `keyword mudah: ${keyword}`),
-    );
-  }
-
-  if (mediumMatches.length > 0) {
-    score += 2;
-    detectedIndicators.push(
-      ...mediumMatches.map((keyword) => `keyword sedang: ${keyword}`),
-    );
-  }
-
-  if (hardMatches.length > 0) {
-    score += 3;
-    detectedIndicators.push(
-      ...hardMatches.map((keyword) => `keyword sulit: ${keyword}`),
-    );
-  }
-
-  if (wordCount > 30) {
-    score += 1;
-    detectedIndicators.push("teks soal panjang");
-  }
-
-  if (
-    text.includes("kasus") ||
-    text.includes("wacana") ||
-    text.includes("cerita")
-  ) {
-    score += 2;
-    detectedIndicators.push("berbentuk konteks kasus atau wacana");
-  }
-
-  if (
-    text.includes("tabel") ||
-    text.includes("grafik") ||
-    text.includes("data") ||
-    text.includes("diagram")
-  ) {
-    score += 1;
-    detectedIndicators.push("mengandung data, tabel, grafik, atau diagram");
-  }
-
-  if (detectedIndicators.length === 0) {
-    score = 1;
-    detectedIndicators.push("indikator khusus tidak terdeteksi");
-  }
-
-  if (score <= 2) {
+function getDifficultyInputPayload(input: DifficultyInput) {
+  if (typeof input === "string") {
     return {
-      difficultyLevel: "LOW",
-      difficultyScore: score,
-      detectedIndicators,
-    };
-  }
-
-  if (score <= 5) {
-    return {
-      difficultyLevel: "MEDIUM",
-      difficultyScore: score,
-      detectedIndicators,
+      questionText: input,
+      imageAltText: null,
+      hasImage: false,
     };
   }
 
   return {
-    difficultyLevel: "HIGH",
-    difficultyScore: score,
+    questionText: input.questionText,
+    imageAltText: input.imageAltText ?? null,
+    hasImage: Boolean(input.hasImage),
+  };
+}
+
+function collectKeywordMatches(text: string, keywords: string[]) {
+  return keywords.filter((keyword) => text.includes(keyword));
+}
+
+export function classifyQuestionDifficulty(
+  input: DifficultyInput,
+): DifficultyResult {
+  const payload = getDifficultyInputPayload(input);
+
+  const questionText = normalizeText(payload.questionText);
+  const imageAltText = normalizeText(payload.imageAltText ?? "");
+  const combinedText = normalizeText(`${questionText} ${imageAltText}`);
+
+  const easyMatches = collectKeywordMatches(combinedText, easyKeywords);
+  const mediumMatches = collectKeywordMatches(combinedText, mediumKeywords);
+  const hardMatches = collectKeywordMatches(combinedText, hardKeywords);
+  const visualMatches = collectKeywordMatches(combinedText, visualKeywords);
+
+  let difficultyScore = 0;
+  const detectedIndicators: string[] = [];
+
+  if (easyMatches.length > 0) {
+    difficultyScore += easyMatches.length;
+    detectedIndicators.push(...easyMatches.map((keyword) => `easy:${keyword}`));
+  }
+
+  if (mediumMatches.length > 0) {
+    difficultyScore += mediumMatches.length * 2;
+    detectedIndicators.push(
+      ...mediumMatches.map((keyword) => `medium:${keyword}`),
+    );
+  }
+
+  if (hardMatches.length > 0) {
+    difficultyScore += hardMatches.length * 3;
+    detectedIndicators.push(...hardMatches.map((keyword) => `hard:${keyword}`));
+  }
+
+  if (payload.hasImage) {
+    difficultyScore += 1;
+    detectedIndicators.push("visual:has-image");
+  }
+
+  if (payload.hasImage && visualMatches.length > 0) {
+    difficultyScore += visualMatches.length;
+    detectedIndicators.push(
+      ...visualMatches.map((keyword) => `visual:${keyword}`),
+    );
+  }
+
+  if (combinedText.length > 180) {
+    difficultyScore += 1;
+    detectedIndicators.push("text:length-medium");
+  }
+
+  if (combinedText.length > 320) {
+    difficultyScore += 1;
+    detectedIndicators.push("text:length-long");
+  }
+
+  let difficultyLevel: DifficultyLevel = "LOW";
+
+  if (difficultyScore >= 6) {
+    difficultyLevel = "HIGH";
+  } else if (difficultyScore >= 3) {
+    difficultyLevel = "MEDIUM";
+  }
+
+  return {
+    difficultyLevel,
+    difficultyScore,
     detectedIndicators,
   };
 }
 
+export function getQuestionDifficulty(input: DifficultyInput): DifficultyLevel {
+  return classifyQuestionDifficulty(input).difficultyLevel;
+}
+
+export function getDifficultyLevel(input: DifficultyInput): DifficultyLevel {
+  return classifyQuestionDifficulty(input).difficultyLevel;
+}
+
+export function detectQuestionDifficulty(
+  input: DifficultyInput,
+): DifficultyResult {
+  return classifyQuestionDifficulty(input);
+}
+
+export function analyzeQuestionDifficulty(
+  input: DifficultyInput,
+): DifficultyResult {
+  return classifyQuestionDifficulty(input);
+}
+
+export function getWeightByPriority(priority: WeightPriority) {
+  const weightMap: Record<WeightPriority, number> = {
+    LOW: 1,
+    NORMAL: 2,
+    HIGH: 3,
+    VERY_HIGH: 4,
+  };
+
+  return weightMap[priority];
+}
+
 export function getWeightFromPriority(priority: WeightPriority) {
-  if (priority === "LOW") return 1;
-  if (priority === "NORMAL") return 3;
-  if (priority === "HIGH") return 5;
-  return 7;
+  return getWeightByPriority(priority);
+}
+
+export function getQuestionWeight(priority: WeightPriority) {
+  return getWeightByPriority(priority);
+}
+
+export function mapWeightPriorityToWeight(priority: WeightPriority) {
+  return getWeightByPriority(priority);
 }
