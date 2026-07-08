@@ -1,4 +1,4 @@
-import type { DifficultyLevel } from "../types/domain.ts";
+import type { DifficultyLevel } from "../types/domain.js";
 
 export type WrsCandidate = {
   id: string;

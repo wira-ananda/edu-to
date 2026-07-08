@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { authMiddleware } from "../middlewares/auth";
-import { roleMiddleware } from "../middlewares/role";
-import { selectQuestionByWrs } from "../lib/wrs";
+import { authMiddleware } from "../middlewares/auth.js";
+import { roleMiddleware } from "../middlewares/role.js";
+import { selectQuestionByWrs } from "../lib/wrs.js";
 import {
   getRandomAvailableLevel,
   updateLevelAfterAnswer,

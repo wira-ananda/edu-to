@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { AppRole } from "../types/domain.ts";
+import type { AppRole } from "../types/domain.js";
 import type { AppEnv } from "../types/hono.js";
 import type { Role } from "@prisma/client/index-browser";
 
