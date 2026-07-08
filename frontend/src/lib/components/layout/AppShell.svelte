@@ -47,10 +47,18 @@
   const activeHref = $derived(activeItem?.href ?? "");
   const title = $derived(activeItem?.label ?? "Halaman Tidak Tersedia");
 
+  const homeHref = $derived(
+    panelLabel.toUpperCase().includes("ADMIN") ? "/admin" : "/student",
+  );
+
   const breadcrumbs = $derived([
-    "Home",
-    panelLabel.replace(" PANEL", ""),
-    title,
+    {
+      label: "Beranda",
+      href: homeHref,
+    },
+    {
+      label: title,
+    },
   ]);
 </script>
 

@@ -1,13 +1,14 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import type { AnswerOption } from "$lib/types/questions";
   import type {
     NextQuestionResponse,
     StudentQuestion,
     SubmitAnswerResponse,
+    TimeoutSessionResponse,
   } from "$lib/types/student";
   import { getDifficultyLabel } from "$lib/types/questions";
 
@@ -15,10 +16,73 @@
 
   let loading = $state(true);
   let submitting = $state(false);
+  let finishingTimeout = $state(false);
   let errorMessage = $state("");
   let question = $state<StudentQuestion | null>(null);
   let selectedAnswer = $state<AnswerOption | "">("");
   let session = $state<NextQuestionResponse["session"] | null>(null);
+
+  let remainingSeconds = $state(0);
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+  let serverOffsetMs = 0;
+
+  function formatTime(totalSeconds: number) {
+    const safeSeconds = Math.max(0, totalSeconds);
+    const minutes = Math.floor(safeSeconds / 60);
+    const seconds = safeSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function clearTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function startTimer(endsAt: string, serverNow: string) {
+    clearTimer();
+
+    serverOffsetMs = new Date(serverNow).getTime() - Date.now();
+
+    function tick() {
+      const now = Date.now() + serverOffsetMs;
+      const end = new Date(endsAt).getTime();
+      remainingSeconds = Math.max(0, Math.ceil((end - now) / 1000));
+
+      if (remainingSeconds <= 0) {
+        clearTimer();
+        finishByTimeout();
+      }
+    }
+
+    tick();
+    timerInterval = setInterval(tick, 1000);
+  }
+
+  async function finishByTimeout() {
+    if (finishingTimeout) return;
+
+    finishingTimeout = true;
+    errorMessage = "";
+
+    try {
+      await apiFetch<TimeoutSessionResponse>(
+        `/student/sessions/${sessionId}/timeout`,
+        {
+          method: "POST",
+        },
+      );
+
+      await goto(`/student/results/${sessionId}`);
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal menyelesaikan tryout.";
+    } finally {
+      finishingTimeout = false;
+    }
+  }
 
   async function loadNextQuestion() {
     loading = true;
@@ -37,6 +101,10 @@
 
       question = result.question ?? null;
       session = result.session ?? null;
+
+      if (result.session) {
+        startTimer(result.session.endsAt, result.session.serverNow);
+      }
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat soal.";
@@ -47,6 +115,11 @@
 
   async function submitAnswer() {
     if (!question) return;
+
+    if (remainingSeconds <= 0) {
+      await finishByTimeout();
+      return;
+    }
 
     if (!selectedAnswer) {
       errorMessage = "Pilih jawaban terlebih dahulu.";
@@ -69,6 +142,7 @@
       );
 
       if (result.finished) {
+        clearTimer();
         await goto(`/student/results/${sessionId}`);
         return;
       }
@@ -89,6 +163,10 @@
   }
 
   onMount(loadNextQuestion);
+
+  onDestroy(() => {
+    clearTimer();
+  });
 </script>
 
 <section class="space-y-5">
@@ -101,19 +179,37 @@
       </p>
     </div>
 
-    {#if session}
+    <div class="flex gap-3">
       <div
         class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-right shadow-sm"
       >
         <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
-          Progress
+          Timer
         </p>
 
-        <p class="mt-1 text-lg font-bold text-slate-950">
-          {session.answeredCount + 1} / {session.totalQuestions}
+        <p
+          class="mt-1 text-lg font-bold {remainingSeconds <= 60
+            ? 'text-red-700'
+            : 'text-slate-950'}"
+        >
+          {formatTime(remainingSeconds)}
         </p>
       </div>
-    {/if}
+
+      {#if session}
+        <div
+          class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-right shadow-sm"
+        >
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
+            Progress
+          </p>
+
+          <p class="mt-1 text-lg font-bold text-slate-950">
+            {Math.min(session.answeredCount + 1, session.totalQuestions)} / {session.totalQuestions}
+          </p>
+        </div>
+      {/if}
+    </div>
   </div>
 
   {#if errorMessage}
@@ -143,7 +239,7 @@
           <span
             class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600"
           >
-            Soal {session.answeredCount + 1}
+            Soal {Math.min(session.answeredCount + 1, session.totalQuestions)}
           </span>
         </div>
 
@@ -189,10 +285,14 @@
           <button
             type="button"
             onclick={submitAnswer}
-            disabled={submitting}
+            disabled={submitting || finishingTimeout}
             class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
-            {submitting ? "Mengirim..." : "Kirim Jawaban"}
+            {submitting
+              ? "Mengirim..."
+              : finishingTimeout
+                ? "Menyelesaikan..."
+                : "Kirim Jawaban"}
           </button>
         </div>
       </div>
@@ -227,6 +327,12 @@
             <span class="font-bold text-red-700">{session.wrongCount}</span>
           </div>
         </div>
+
+        <p
+          class="mt-5 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700"
+        >
+          Jika waktu habis, soal yang belum dijawab otomatis dihitung salah.
+        </p>
       </aside>
     </div>
   {/if}

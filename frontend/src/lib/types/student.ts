@@ -33,6 +33,7 @@ export type StudentSession = {
   tryout: {
     id: string;
     title: string;
+    durationMinutes: number;
     subject: {
       id: string;
       name: string;
@@ -71,6 +72,10 @@ export type NextQuestionResponse = {
     answeredCount: number;
     correctCount: number;
     wrongCount: number;
+    startedAt: string;
+    durationMinutes: number;
+    endsAt: string;
+    serverNow: string;
   };
   question?: StudentQuestion;
 };
@@ -78,10 +83,17 @@ export type NextQuestionResponse = {
 export type SubmitAnswerResponse = {
   ok: boolean;
   message: string;
-  isCorrect: boolean;
-  selectedAnswer: AnswerOption;
-  previousLevel: DifficultyLevel;
-  currentLevel: DifficultyLevel;
+  isCorrect?: boolean;
+  selectedAnswer?: AnswerOption;
+  previousLevel?: DifficultyLevel;
+  currentLevel?: DifficultyLevel;
+  finished: boolean;
+  session: StudentSession;
+};
+
+export type TimeoutSessionResponse = {
+  ok: boolean;
+  message: string;
   finished: boolean;
   session: StudentSession;
 };
@@ -110,7 +122,7 @@ export type StudentResultResponse = {
   answers: {
     id: string;
     questionText: string;
-    selectedAnswer: AnswerOption;
+    selectedAnswer: AnswerOption | null;
     correctAnswer: AnswerOption;
     isCorrect: boolean;
     answeredAt: string;

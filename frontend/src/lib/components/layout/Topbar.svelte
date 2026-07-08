@@ -1,7 +1,12 @@
 <script lang="ts">
+  type BreadcrumbItem = {
+    label: string;
+    href?: string;
+  };
+
   type Props = {
     title: string;
-    breadcrumbs: string[];
+    breadcrumbs: BreadcrumbItem[];
     version?: string;
   };
 
@@ -15,21 +20,30 @@
     <div>
       <h1 class="text-xl font-bold text-slate-950">{title}</h1>
 
-      <div class="mt-1 flex items-center gap-2 text-xs text-slate-500">
+      <nav class="mt-1 flex items-center gap-2 text-xs text-slate-500">
         {#each breadcrumbs as breadcrumb, index}
-          <span
-            class={index === breadcrumbs.length - 1
-              ? "font-semibold text-blue-900"
-              : ""}
-          >
-            {breadcrumb}
-          </span>
+          {#if breadcrumb.href && index < breadcrumbs.length - 1}
+            <a
+              href={breadcrumb.href}
+              class="font-medium text-slate-500 hover:text-blue-900"
+            >
+              {breadcrumb.label}
+            </a>
+          {:else}
+            <span
+              class={index === breadcrumbs.length - 1
+                ? "font-semibold text-blue-900"
+                : ""}
+            >
+              {breadcrumb.label}
+            </span>
+          {/if}
 
           {#if index < breadcrumbs.length - 1}
             <span>/</span>
           {/if}
         {/each}
-      </div>
+      </nav>
     </div>
 
     <div class="flex items-center gap-3">
@@ -58,29 +72,6 @@
         aria-label="Help"
       >
         ?
-      </button>
-
-      <button
-        type="button"
-        class="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-        aria-label="Notifications"
-      >
-        <svg
-          class="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-        >
-          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-          <path d="M10 21h4" />
-        </svg>
-
-        <span
-          class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
-        >
-          3
-        </span>
       </button>
 
       <span

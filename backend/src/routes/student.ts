@@ -42,6 +42,274 @@ function toStudentQuestion(question: {
   };
 }
 
+function getEndsAt(startedAt: Date, durationMinutes: number) {
+  return new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
+}
+
+function isExpired(startedAt: Date, durationMinutes: number) {
+  return Date.now() >= getEndsAt(startedAt, durationMinutes).getTime();
+}
+
+function getSessionTimerPayload(
+  session: {
+    id: string;
+    initialLevel: DifficultyLevel;
+    currentLevel: DifficultyLevel;
+    totalQuestions: number;
+    correctCount: number;
+    wrongCount: number;
+    startedAt: Date;
+    tryout: {
+      durationMinutes: number;
+    };
+  },
+  answeredCount: number,
+) {
+  const endsAt = getEndsAt(session.startedAt, session.tryout.durationMinutes);
+
+  return {
+    id: session.id,
+    initialLevel: session.initialLevel,
+    currentLevel: session.currentLevel,
+    totalQuestions: session.totalQuestions,
+    answeredCount,
+    correctCount: session.correctCount,
+    wrongCount: session.wrongCount,
+    startedAt: session.startedAt,
+    durationMinutes: session.tryout.durationMinutes,
+    endsAt,
+    serverNow: new Date(),
+  };
+}
+
+async function finishSessionByTimeout(sessionId: string, userId: string) {
+  const session = await prisma.tryoutSession.findFirst({
+    where: {
+      id: sessionId,
+      userId,
+    },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return null;
+  }
+
+  if (session.status === "FINISHED") {
+    return session;
+  }
+
+  const existingAnswers = await prisma.answers.findMany({
+    where: {
+      sessionId: session.id,
+    },
+    select: {
+      questionId: true,
+      isCorrect: true,
+    },
+  });
+
+  const answeredQuestionIds = new Set(
+    existingAnswers.map((answer) => answer.questionId),
+  );
+
+  let currentLevel = session.currentLevel;
+  let answeredCount = existingAnswers.length;
+
+  while (answeredCount < session.totalQuestions) {
+    const pendingLog = await prisma.wrsLog.findFirst({
+      where: {
+        sessionId: session.id,
+        questionId: {
+          notIn: Array.from(answeredQuestionIds),
+        },
+      },
+      include: {
+        question: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (pendingLog && !answeredQuestionIds.has(pendingLog.questionId)) {
+      await prisma.answers.create({
+        data: {
+          sessionId: session.id,
+          questionId: pendingLog.questionId,
+          selectedAnswer: null,
+          isCorrect: false,
+        },
+      });
+
+      answeredQuestionIds.add(pendingLog.questionId);
+      answeredCount += 1;
+      currentLevel = updateLevelAfterAnswer(currentLevel, false);
+      continue;
+    }
+
+    let candidates = await prisma.question.findMany({
+      where: {
+        subjectId: session.tryout.subjectId,
+        difficultyLevel: currentLevel,
+        id: {
+          notIn: Array.from(answeredQuestionIds),
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    let usedLevel = currentLevel;
+
+    if (candidates.length === 0) {
+      for (const level of levels) {
+        if (level === currentLevel) continue;
+
+        const fallbackCandidates = await prisma.question.findMany({
+          where: {
+            subjectId: session.tryout.subjectId,
+            difficultyLevel: level,
+            id: {
+              notIn: Array.from(answeredQuestionIds),
+            },
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        });
+
+        if (fallbackCandidates.length > 0) {
+          candidates = fallbackCandidates;
+          usedLevel = level;
+          break;
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    const selection = selectQuestionByWrs(candidates);
+
+    await prisma.wrsLog.create({
+      data: {
+        sessionId: session.id,
+        questionId: selection.selected.id,
+        currentLevel: usedLevel,
+        candidateCount: candidates.length,
+        totalWeight: selection.totalWeight,
+        randomValue: selection.randomValue,
+        selectedQuestionWeight: selection.selected.weight,
+        selectedQuestionDifficulty: selection.selected.difficultyLevel,
+      },
+    });
+
+    await prisma.answers.create({
+      data: {
+        sessionId: session.id,
+        questionId: selection.selected.id,
+        selectedAnswer: null,
+        isCorrect: false,
+      },
+    });
+
+    answeredQuestionIds.add(selection.selected.id);
+    answeredCount += 1;
+    currentLevel = updateLevelAfterAnswer(usedLevel, false);
+  }
+
+  const correctCount = await prisma.answers.count({
+    where: {
+      sessionId: session.id,
+      isCorrect: true,
+    },
+  });
+
+  const wrongCount = Math.max(0, session.totalQuestions - correctCount);
+  const score = calculateScore(correctCount, session.totalQuestions);
+
+  const updatedSession = await prisma.tryoutSession.update({
+    where: {
+      id: session.id,
+    },
+    data: {
+      currentLevel,
+      correctCount,
+      wrongCount,
+      score,
+      status: "FINISHED",
+      finishedAt: new Date(),
+    },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+
+  return updatedSession;
+}
+
+async function finishSessionNormally(sessionId: string) {
+  const session = await prisma.tryoutSession.findUnique({
+    where: {
+      id: sessionId,
+    },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return null;
+  }
+
+  const correctCount = await prisma.answers.count({
+    where: {
+      sessionId: session.id,
+      isCorrect: true,
+    },
+  });
+
+  const wrongCount = Math.max(0, session.totalQuestions - correctCount);
+  const score = calculateScore(correctCount, session.totalQuestions);
+
+  return prisma.tryoutSession.update({
+    where: {
+      id: session.id,
+    },
+    data: {
+      correctCount,
+      wrongCount,
+      score,
+      status: "FINISHED",
+      finishedAt: new Date(),
+    },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+}
+
 studentRoutes.get("/check", async (c) => {
   const user = c.get("user");
 
@@ -263,6 +531,16 @@ studentRoutes.get("/sessions/:sessionId/next-question", async (c) => {
     });
   }
 
+  if (isExpired(session.startedAt, session.tryout.durationMinutes)) {
+    await finishSessionByTimeout(session.id, user.id);
+
+    return c.json({
+      ok: true,
+      finished: true,
+      message: "Waktu tryout habis",
+    });
+  }
+
   const answers = await prisma.answers.findMany({
     where: {
       sessionId,
@@ -275,18 +553,7 @@ studentRoutes.get("/sessions/:sessionId/next-question", async (c) => {
   const answeredQuestionIds = answers.map((answer) => answer.questionId);
 
   if (answeredQuestionIds.length >= session.totalQuestions) {
-    const score = calculateScore(session.correctCount, session.totalQuestions);
-
-    await prisma.tryoutSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        status: "FINISHED",
-        finishedAt: new Date(),
-        score,
-      },
-    });
+    await finishSessionNormally(session.id);
 
     return c.json({
       ok: true,
@@ -314,15 +581,7 @@ studentRoutes.get("/sessions/:sessionId/next-question", async (c) => {
     return c.json({
       ok: true,
       finished: false,
-      session: {
-        id: session.id,
-        initialLevel: session.initialLevel,
-        currentLevel: session.currentLevel,
-        totalQuestions: session.totalQuestions,
-        answeredCount: answeredQuestionIds.length,
-        correctCount: session.correctCount,
-        wrongCount: session.wrongCount,
-      },
+      session: getSessionTimerPayload(session, answeredQuestionIds.length),
       question: toStudentQuestion(pendingLog.question),
     });
   }
@@ -368,18 +627,7 @@ studentRoutes.get("/sessions/:sessionId/next-question", async (c) => {
   }
 
   if (candidates.length === 0) {
-    const score = calculateScore(session.correctCount, session.totalQuestions);
-
-    await prisma.tryoutSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        status: "FINISHED",
-        finishedAt: new Date(),
-        score,
-      },
-    });
+    await finishSessionNormally(session.id);
 
     return c.json({
       ok: true,
@@ -424,15 +672,7 @@ studentRoutes.get("/sessions/:sessionId/next-question", async (c) => {
   return c.json({
     ok: true,
     finished: false,
-    session: {
-      id: session.id,
-      initialLevel: session.initialLevel,
-      currentLevel: session.currentLevel,
-      totalQuestions: session.totalQuestions,
-      answeredCount: answeredQuestionIds.length,
-      correctCount: session.correctCount,
-      wrongCount: session.wrongCount,
-    },
+    session: getSessionTimerPayload(session, answeredQuestionIds.length),
     question: toStudentQuestion(selection.selected),
   });
 });
@@ -465,7 +705,11 @@ studentRoutes.post("/sessions/:sessionId/answer", async (c) => {
       userId: user.id,
     },
     include: {
-      tryout: true,
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
     },
   });
 
@@ -480,13 +724,23 @@ studentRoutes.post("/sessions/:sessionId/answer", async (c) => {
   }
 
   if (session.status === "FINISHED") {
-    return c.json(
-      {
-        ok: false,
-        message: "Sesi tryout sudah selesai",
-      },
-      400,
-    );
+    return c.json({
+      ok: true,
+      message: "Sesi tryout sudah selesai",
+      finished: true,
+      session,
+    });
+  }
+
+  if (isExpired(session.startedAt, session.tryout.durationMinutes)) {
+    const updatedSession = await finishSessionByTimeout(session.id, user.id);
+
+    return c.json({
+      ok: true,
+      message: "Waktu tryout habis",
+      finished: true,
+      session: updatedSession,
+    });
   }
 
   const question = await prisma.question.findFirst({
@@ -578,6 +832,13 @@ studentRoutes.post("/sessions/:sessionId/answer", async (c) => {
       status: isFinished ? "FINISHED" : "ONGOING",
       finishedAt: isFinished ? new Date() : null,
     },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
   });
 
   return c.json({
@@ -588,6 +849,63 @@ studentRoutes.post("/sessions/:sessionId/answer", async (c) => {
     previousLevel: session.currentLevel,
     currentLevel: updatedSession.currentLevel,
     finished: isFinished,
+    session: updatedSession,
+  });
+});
+
+studentRoutes.post("/sessions/:sessionId/timeout", async (c) => {
+  const user = c.get("user");
+  const sessionId = c.req.param("sessionId");
+
+  const session = await prisma.tryoutSession.findFirst({
+    where: {
+      id: sessionId,
+      userId: user.id,
+    },
+    include: {
+      tryout: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return c.json(
+      {
+        ok: false,
+        message: "Sesi tryout tidak ditemukan",
+      },
+      404,
+    );
+  }
+
+  if (session.status === "FINISHED") {
+    return c.json({
+      ok: true,
+      message: "Sesi tryout sudah selesai",
+      finished: true,
+      session,
+    });
+  }
+
+  if (!isExpired(session.startedAt, session.tryout.durationMinutes)) {
+    return c.json(
+      {
+        ok: false,
+        message: "Waktu tryout belum habis",
+      },
+      400,
+    );
+  }
+
+  const updatedSession = await finishSessionByTimeout(session.id, user.id);
+
+  return c.json({
+    ok: true,
+    message: "Waktu tryout habis. Soal yang belum dijawab dihitung salah.",
+    finished: true,
     session: updatedSession,
   });
 });
