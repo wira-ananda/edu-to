@@ -36,6 +36,21 @@ export const adminNavGroups: AppNavGroup[] = [
       },
     ],
   },
+  {
+    title: "Manajemen Akun",
+    items: [
+      {
+        label: "Daftar Akun",
+        href: "/admin/users",
+        icon: "user",
+      },
+      {
+        label: "Buat Akun",
+        href: "/admin/users/new",
+        icon: "plus-circle",
+      },
+    ],
+  },
   // {
   //   title: "Evaluasi & Log",
   //   items: [

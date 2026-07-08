@@ -6,6 +6,7 @@ import { prisma } from "./lib/prisma";
 import { supabaseAdmin } from "./lib/supabase-admin";
 import { authMiddleware } from "./middlewares/auth";
 import { adminRoutes } from "./routes/admin";
+import { adminUserRoutes } from "./routes/admin-users";
 import { studentRoutes } from "./routes/student";
 import type { AppEnv } from "./types/hono";
 
@@ -30,9 +31,19 @@ const registerSchema = z.object({
   name: z.string().min(1, "Nama wajib diisi"),
   email: z.string().email("Email tidak valid"),
   password: z.string().min(6, "Password minimal 6 karakter"),
-  school: z.string().optional(),
-  className: z.string().optional(),
+  school: z.string().optional().nullable(),
+  className: z.string().optional().nullable(),
 });
+
+function cleanOptionalText(value?: string | null) {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : null;
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Terjadi kesalahan pada server";
+}
 
 app.get("/", (c) => {
   return c.json({
@@ -73,8 +84,11 @@ app.post("/auth/register", async (c) => {
     );
   }
 
-  const { name, password, school, className } = parsed.data;
-  const email = parsed.data.email.toLowerCase().trim();
+  const name = parsed.data.name.trim();
+  const email = parsed.data.email.trim().toLowerCase();
+  const password = parsed.data.password;
+  const school = cleanOptionalText(parsed.data.school);
+  const className = cleanOptionalText(parsed.data.className);
 
   const existingAppUser = await prisma.user.findUnique({
     where: {
@@ -108,62 +122,82 @@ app.post("/auth/register", async (c) => {
     );
   }
 
-  const existingSupabaseUser = existingUsers.users.find(
-    (user) => user.email?.toLowerCase() === email,
-  );
+  const existingSupabaseUser = existingUsers.users.find((user) => {
+    return user.email?.toLowerCase() === email;
+  });
 
   if (existingSupabaseUser) {
     return c.json(
       {
         ok: false,
         message:
-          "Email sudah ada di Supabase Auth tetapi belum tersinkron ke NeonDB. Hapus user tersebut di Supabase Auth atau gunakan email lain untuk register ulang.",
+          "Email sudah ada di Supabase Auth tetapi belum tersinkron ke NeonDB. Hapus user tersebut di Supabase Auth atau gunakan email lain.",
       },
       409,
     );
   }
 
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      name,
-      school,
-      className,
-      role: "STUDENT",
-    },
-  });
+  let supabaseUserId: string | null = null;
 
-  if (error || !data.user) {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        name,
+        school,
+        className,
+        role: "STUDENT",
+      },
+    });
+
+    if (error || !data.user) {
+      return c.json(
+        {
+          ok: false,
+          message: error?.message ?? "Gagal membuat user Supabase",
+        },
+        500,
+      );
+    }
+
+    supabaseUserId = data.user.id;
+
+    const appUser = await prisma.user.create({
+      data: {
+        supabaseUserId,
+        name,
+        email,
+        role: "STUDENT",
+        school,
+        className,
+      },
+    });
+
+    return c.json(
+      {
+        ok: true,
+        message: "Registrasi berhasil",
+        user: appUser,
+      },
+      201,
+    );
+  } catch (error) {
+    if (supabaseUserId) {
+      await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => {
+        return null;
+      });
+    }
+
     return c.json(
       {
         ok: false,
-        message: error?.message ?? "Gagal membuat user Supabase",
+        message: getErrorMessage(error),
       },
       500,
     );
   }
-
-  const appUser = await prisma.user.create({
-    data: {
-      supabaseUserId: data.user.id,
-      name,
-      email,
-      role: "STUDENT",
-      school,
-      className,
-    },
-  });
-
-  return c.json(
-    {
-      ok: true,
-      message: "Registrasi berhasil",
-      user: appUser,
-    },
-    201,
-  );
 });
 
 app.get("/me", authMiddleware, async (c) => {
@@ -175,6 +209,7 @@ app.get("/me", authMiddleware, async (c) => {
   });
 });
 
+app.route("/admin/users", adminUserRoutes);
 app.route("/admin", adminRoutes);
 app.route("/student", studentRoutes);
 
