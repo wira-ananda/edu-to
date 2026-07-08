@@ -1,4 +1,4 @@
-import type { DifficultyLevel } from "../generated/prisma/client";
+import type { DifficultyLevel } from "../generated/prisma/client.js";
 
 export type WrsCandidate = {
   id: string;

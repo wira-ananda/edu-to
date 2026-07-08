@@ -1,10 +1,10 @@
-import "../lib/env";
-import { prisma } from "../lib/prisma";
+import "../lib/env.js";
+import { prisma } from "../lib/prisma.js";
 import {
   classifyQuestionDifficulty,
   getWeightFromPriority,
-} from "../lib/question-difficulty";
-import type { AnswerOption, WeightPriority } from "../generated/prisma/client";
+} from "../lib/question-difficulty.js";
+import type { AnswerOption, WeightPriority } from "../generated/prisma/client.js";
 
 const TEST_PREFIX = "[TEST-BIO-SMA]";
 

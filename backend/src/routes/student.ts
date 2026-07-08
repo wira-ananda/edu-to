@@ -1,15 +1,15 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
-import { authMiddleware } from "../middlewares/auth";
-import { roleMiddleware } from "../middlewares/role";
-import { selectQuestionByWrs } from "../lib/wrs";
+import { prisma } from "../lib/prisma.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { roleMiddleware } from "../middlewares/role.js";
+import { selectQuestionByWrs } from "../lib/wrs.js";
 import {
   getRandomAvailableLevel,
   updateLevelAfterAnswer,
-} from "../lib/tryout-level";
-import type { AppEnv } from "../types/hono";
-import type { DifficultyLevel } from "../generated/prisma/client";
+} from "../lib/tryout-level.js";
+import type { AppEnv } from "../types/hono.js";
+import type { DifficultyLevel } from "../generated/prisma/client.js";
 
 export const studentRoutes = new Hono<AppEnv>();
 

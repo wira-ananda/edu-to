@@ -1,7 +1,7 @@
 import type {
   DifficultyLevel,
   WeightPriority,
-} from "../generated/prisma/client";
+} from "../generated/prisma/client.js";
 
 export type DifficultyResult = {
   difficultyLevel: DifficultyLevel;

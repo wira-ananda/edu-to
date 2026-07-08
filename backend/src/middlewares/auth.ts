@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
-import { supabase } from "../lib/supabase";
-import { prisma } from "../lib/prisma";
-import type { AppEnv } from "../types/hono";
+import { supabase } from "../lib/supabase.js";
+import { prisma } from "../lib/prisma.js";
+import type { AppEnv } from "../types/hono.js";
 
 function getStringMetadata(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;

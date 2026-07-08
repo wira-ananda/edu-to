@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
-import { supabaseAdmin } from "../lib/supabase-admin";
-import { authMiddleware } from "../middlewares/auth";
-import { roleMiddleware } from "../middlewares/role";
-import type { AppEnv } from "../types/hono";
+import { prisma } from "../lib/prisma.js";
+import { supabaseAdmin } from "../lib/supabase-admin.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { roleMiddleware } from "../middlewares/role.js";
+import type { AppEnv } from "../types/hono.js";
 
 export const adminUserRoutes = new Hono<AppEnv>();
 

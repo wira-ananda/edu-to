@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
-import { authMiddleware } from "../middlewares/auth";
-import { roleMiddleware } from "../middlewares/role";
+import { prisma } from "../lib/prisma.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { roleMiddleware } from "../middlewares/role.js";
 import {
   classifyQuestionDifficulty,
   getWeightFromPriority,
-} from "../lib/question-difficulty";
+} from "../lib/question-difficulty.js";
 import type {
   DifficultyLevel,
   WeightPriority,
-} from "../generated/prisma/client";
-import type { AppEnv } from "../types/hono";
+} from "../generated/prisma/client.js";
+import type { AppEnv } from "../types/hono.js";
 
 export const adminRoutes = new Hono<AppEnv>();
 

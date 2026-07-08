@@ -1,14 +1,14 @@
-import "./lib/env";
+import "./lib/env.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { prisma } from "./lib/prisma";
-import { supabaseAdmin } from "./lib/supabase-admin";
-import { authMiddleware } from "./middlewares/auth";
-import { adminRoutes } from "./routes/admin";
-import { adminUserRoutes } from "./routes/admin-users";
-import { studentRoutes } from "./routes/student";
-import type { AppEnv } from "./types/hono";
+import { prisma } from "./lib/prisma.js";
+import { supabaseAdmin } from "./lib/supabase-admin.js";
+import { authMiddleware } from "./middlewares/auth.js";
+import { adminRoutes } from "./routes/admin.js";
+import { adminUserRoutes } from "./routes/admin-users.js";
+import { studentRoutes } from "./routes/student.js";
+import type { AppEnv } from "./types/hono.js";
 
 const app = new Hono<AppEnv>();
 
