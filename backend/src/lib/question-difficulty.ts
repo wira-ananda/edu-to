@@ -1,4 +1,15 @@
+<<<<<<< Updated upstream
 import type { DifficultyLevel, WeightPriority } from "@prisma/client";
+=======
+<<<<<<< Updated upstream
+import type {
+  DifficultyLevel,
+  WeightPriority,
+} from "../generated/prisma/client";
+=======
+import type { DifficultyLevel, WeightPriority } from "../types/domain.ts";
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 export type DifficultyResult = {
   difficultyLevel: DifficultyLevel;

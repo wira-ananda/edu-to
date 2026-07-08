@@ -61,3 +61,13 @@ coverage/
 .temp/
 .tmp/
 EOF
+
+.env
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+
+!backend/.env.example
+!frontend/.env.example

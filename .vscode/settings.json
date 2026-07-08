@@ -3,6 +3,11 @@
   "workbench.colorTheme": "Darcula",
   "workbench.productIconTheme": "lucide-icons",
 
+  "typescript.preferences.importModuleSpecifierEnding": "js",
+  "javascript.preferences.importModuleSpecifierEnding": "js",
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "javascript.preferences.importModuleSpecifier": "relative",
+
   "editor.formatOnSave": true,
   "editor.formatOnSaveTimeout": 10000,
 

@@ -1,10 +1,11 @@
-import { config } from 'dotenv';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { config } from "dotenv";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const backendEnvPath = resolve(process.cwd(), ".env");
 
-config({
-	path: resolve(__dirname, '../../../.env')
-});
+if (existsSync(backendEnvPath)) {
+  config({ path: backendEnvPath });
+} else {
+  config();
+}

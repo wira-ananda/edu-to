@@ -1,4 +1,4 @@
-import type { DifficultyLevel } from "@prisma/client";
+import type { DifficultyLevel } from "../types/domain.ts";
 
 const levels: DifficultyLevel[] = ["LOW", "MEDIUM", "HIGH"];
 

@@ -1,9 +1,10 @@
 import type { MiddlewareHandler } from "hono";
-import type { Role } from "@prisma/client";
+import type { AppRole } from "../types/domain.ts";
 import type { AppEnv } from "../types/hono.js";
+import type { Role } from "@prisma/client/index-browser";
 
 export function roleMiddleware(
-  allowedRoles: Role[],
+  allowedRoles: AppRole[],
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const user = c.get("user");

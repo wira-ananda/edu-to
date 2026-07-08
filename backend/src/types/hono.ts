@@ -1,7 +1,7 @@
-import type { User } from "@prisma/client";
+import type { AppUser } from "./domain.js";
 
 export type AppEnv = {
   Variables: {
-    user: User;
+    user: AppUser;
   };
 };
