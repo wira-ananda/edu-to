@@ -12,18 +12,14 @@ import type { AppEnv } from "./types/hono.js";
 
 const app = new Hono<AppEnv>();
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
-
 app.use(
   "*",
   cors({
-    origin: allowedOrigins,
-    credentials: true,
+    origin: "*",
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
   }),
 );
 
