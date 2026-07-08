@@ -26,6 +26,8 @@
     children,
   }: Props = $props();
 
+  let sidebarOpen = $state(false);
+
   setContext<() => AppUser>("appUser", () => user);
 
   const currentPath = $derived(page.url.pathname);
@@ -60,15 +62,43 @@
       label: title,
     },
   ]);
+
+  $effect(() => {
+    currentPath;
+    sidebarOpen = false;
+  });
 </script>
 
 <div class="min-h-screen bg-slate-50 text-slate-900">
-  <Sidebar {user} {appName} {panelLabel} {navGroups} {activeHref} {onLogout} />
+  {#if sidebarOpen}
+    <button
+      type="button"
+      aria-label="Tutup menu"
+      class="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px] lg:hidden"
+      onclick={() => (sidebarOpen = false)}
+    ></button>
+  {/if}
 
-  <div class="min-h-screen pl-[280px]">
-    <Topbar {title} {breadcrumbs} {version} />
+  <Sidebar
+    {user}
+    {appName}
+    {panelLabel}
+    {navGroups}
+    {activeHref}
+    {onLogout}
+    mobileOpen={sidebarOpen}
+    onCloseMobile={() => (sidebarOpen = false)}
+  />
 
-    <main class="px-8 py-7">
+  <div class="min-h-screen lg:pl-[280px]">
+    <Topbar
+      {title}
+      {breadcrumbs}
+      {version}
+      onOpenSidebar={() => (sidebarOpen = true)}
+    />
+
+    <main class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
       {@render children()}
     </main>
   </div>

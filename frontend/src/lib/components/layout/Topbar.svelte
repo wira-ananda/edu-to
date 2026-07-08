@@ -8,46 +8,80 @@
     title: string;
     breadcrumbs: BreadcrumbItem[];
     version?: string;
+    onOpenSidebar?: () => void;
   };
 
-  let { title, breadcrumbs, version = "v2.4.1" }: Props = $props();
+  let {
+    title,
+    breadcrumbs,
+    version = "v2.4.1",
+    onOpenSidebar,
+  }: Props = $props();
 </script>
 
 <header
-  class="sticky top-0 z-30 h-[76px] border-b border-slate-200 bg-white/95 backdrop-blur"
+  class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur"
 >
-  <div class="flex h-full items-center justify-between px-8">
-    <div>
-      <h1 class="text-xl font-bold text-slate-950">{title}</h1>
+  <div
+    class="flex min-h-[72px] items-center justify-between gap-4 px-4 sm:px-6 lg:min-h-[76px] lg:px-8"
+  >
+    <div class="flex min-w-0 items-center gap-3">
+      <button
+        type="button"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 lg:hidden"
+        aria-label="Buka menu"
+        onclick={() => onOpenSidebar?.()}
+      >
+        <svg
+          class="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+        </svg>
+      </button>
 
-      <nav class="mt-1 flex items-center gap-2 text-xs text-slate-500">
-        {#each breadcrumbs as breadcrumb, index}
-          {#if breadcrumb.href && index < breadcrumbs.length - 1}
-            <a
-              href={breadcrumb.href}
-              class="font-medium text-slate-500 hover:text-blue-900"
-            >
-              {breadcrumb.label}
-            </a>
-          {:else}
-            <span
-              class={index === breadcrumbs.length - 1
-                ? "font-semibold text-blue-900"
-                : ""}
-            >
-              {breadcrumb.label}
-            </span>
-          {/if}
+      <div class="min-w-0">
+        <h1 class="truncate text-lg font-bold text-slate-950 sm:text-xl">
+          {title}
+        </h1>
 
-          {#if index < breadcrumbs.length - 1}
-            <span>/</span>
-          {/if}
-        {/each}
-      </nav>
+        <nav
+          class="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs text-slate-500"
+          aria-label="Breadcrumb"
+        >
+          {#each breadcrumbs as breadcrumb, index}
+            {#if breadcrumb.href && index < breadcrumbs.length - 1}
+              <a
+                href={breadcrumb.href}
+                class="shrink-0 font-medium text-slate-500 hover:text-blue-900"
+              >
+                {breadcrumb.label}
+              </a>
+            {:else}
+              <span
+                class={index === breadcrumbs.length - 1
+                  ? "truncate font-semibold text-blue-900"
+                  : "shrink-0"}
+              >
+                {breadcrumb.label}
+              </span>
+            {/if}
+
+            {#if index < breadcrumbs.length - 1}
+              <span class="shrink-0">/</span>
+            {/if}
+          {/each}
+        </nav>
+      </div>
     </div>
 
-    <div class="flex items-center gap-3">
-      <div class="relative hidden md:block">
+    <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+      <div class="relative hidden xl:block">
         <svg
           class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
           viewBox="0 0 24 24"
@@ -68,14 +102,14 @@
 
       <button
         type="button"
-        class="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+        class="hidden h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 sm:flex"
         aria-label="Help"
       >
         ?
       </button>
 
       <span
-        class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500"
+        class="hidden rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500 sm:inline-flex"
       >
         {version}
       </span>

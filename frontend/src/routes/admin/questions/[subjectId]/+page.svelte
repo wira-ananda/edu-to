@@ -39,6 +39,7 @@
     const result = await apiFetch<QuestionBanksResponse>(
       "/admin/question-banks",
     );
+
     banks = result.banks;
   }
 
@@ -102,8 +103,10 @@
 </script>
 
 <section class="space-y-5">
-  <div class="flex items-start justify-between">
-    <div>
+  <div
+    class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+  >
+    <div class="min-w-0">
       <button
         type="button"
         onclick={() => goto("/admin/questions")}
@@ -112,50 +115,58 @@
         ← Kembali ke daftar bank soal
       </button>
 
-      <h2 class="text-2xl font-bold text-slate-950">
+      <h2 class="truncate text-2xl font-bold text-slate-950">
         Bank Soal {currentBank?.name ?? ""}
       </h2>
 
-      <p class="mt-1 text-sm text-slate-500">
-        Kelola dan periksa semua soal pada mata pelajaran ini. Total: <span
-          class="font-bold text-slate-900">{questions.length}</span
-        > soal.
+      <p class="mt-1 text-sm leading-6 text-slate-500">
+        Kelola dan periksa semua soal pada mata pelajaran ini. Total:
+        <span class="font-bold text-slate-900">{questions.length}</span>
+        soal.
       </p>
     </div>
 
     <button
       type="button"
       onclick={() => goto(`/admin/questions/new?subjectId=${subjectId}`)}
-      class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      class="w-full rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white sm:w-auto"
     >
-      + Add Question
+      + Tambah Soal
     </button>
   </div>
 
   {#if currentBank}
-    <div class="grid gap-4 md:grid-cols-4">
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
         <p class="text-sm font-semibold text-slate-500">Total Soal</p>
         <p class="mt-2 text-2xl font-bold text-slate-950">
           {currentBank.totalQuestions}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
         <p class="text-sm font-semibold text-slate-500">Mudah</p>
         <p class="mt-2 text-2xl font-bold text-emerald-700">
           {currentBank.difficultyCounts.LOW}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
         <p class="text-sm font-semibold text-slate-500">Sedang</p>
         <p class="mt-2 text-2xl font-bold text-amber-700">
           {currentBank.difficultyCounts.MEDIUM}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
         <p class="text-sm font-semibold text-slate-500">Sulit</p>
         <p class="mt-2 text-2xl font-bold text-red-700">
           {currentBank.difficultyCounts.HIGH}
@@ -166,7 +177,7 @@
 
   <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
     <form
-      class="grid grid-cols-1 gap-3 md:grid-cols-5"
+      class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5"
       onsubmit={(event) => {
         event.preventDefault();
         loadQuestions();
@@ -175,15 +186,15 @@
       <input
         type="text"
         bind:value={search}
-        placeholder="Search by question content..."
-        class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white md:col-span-2"
+        placeholder="Cari isi soal..."
+        class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white sm:col-span-2 xl:col-span-2"
       />
 
       <select
         bind:value={difficultyLevel}
         class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white"
       >
-        <option value="">All Difficulties</option>
+        <option value="">Semua Tingkat</option>
         <option value="LOW">Mudah</option>
         <option value="MEDIUM">Sedang</option>
         <option value="HIGH">Sulit</option>
@@ -217,118 +228,240 @@
     </p>
   {/if}
 
-  <div
-    class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-  >
-    <table class="w-full text-left text-sm">
-      <thead
-        class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
+  <div class="lg:hidden">
+    {#if loading}
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm"
       >
-        <tr>
-          <th class="w-20 px-5 py-4">ID</th>
-          <th class="px-5 py-4">Question</th>
-          <th class="px-5 py-4">Bank / Subject</th>
-          <th class="px-5 py-4">Difficulty</th>
-          <th class="px-5 py-4">Prioritas</th>
-          <th class="px-5 py-4">WRS Weight</th>
-          <th class="px-5 py-4">Kunci</th>
-          <th class="px-5 py-4">Actions</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {#if loading}
-          <tr>
-            <td colspan="8" class="px-5 py-10 text-center text-slate-500">
-              Memuat data...
-            </td>
-          </tr>
-        {:else if questions.length === 0}
-          <tr>
-            <td colspan="8" class="px-5 py-10 text-center text-slate-500">
-              Belum ada soal pada bank soal ini.
-            </td>
-          </tr>
-        {:else}
-          {#each questions as question, index}
-            <tr class="border-t border-slate-100 hover:bg-slate-50/60">
-              <td class="px-5 py-4 text-xs font-semibold text-slate-400">
-                {getQuestionShortId(index)}
-              </td>
-
-              <td class="max-w-xl px-5 py-4">
-                <p class="line-clamp-3 font-semibold leading-6 text-slate-900">
-                  {question.questionText}
+        Memuat data...
+      </div>
+    {:else if questions.length === 0}
+      <div
+        class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm"
+      >
+        Belum ada soal pada bank soal ini.
+      </div>
+    {:else}
+      <div class="space-y-3">
+        {#each questions as question, index}
+          <article
+            class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div class="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-bold text-slate-400">
+                  {getQuestionShortId(index)}
                 </p>
-              </td>
 
-              <td class="px-5 py-4">
-                <p class="font-semibold text-slate-700">
+                <p class="mt-1 text-sm font-bold text-slate-900">
                   {question.subject.name}
                 </p>
-                <p class="text-xs text-slate-400">SMAN 1 Gowa</p>
-              </td>
+              </div>
 
-              <td class="px-5 py-4">
-                <span
-                  class={`rounded-full px-3 py-1 text-xs font-bold ${getDifficultyBadgeClass(question.difficultyLevel as DifficultyLevel)}`}
-                >
-                  {getDifficultyLabel(
-                    question.difficultyLevel as DifficultyLevel,
-                  )}
-                </span>
-              </td>
-
-              <td class="px-5 py-4 text-slate-600">
-                {getWeightPriorityLabel(
-                  question.weightPriority as WeightPriority,
+              <span
+                class={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${getDifficultyBadgeClass(question.difficultyLevel as DifficultyLevel)}`}
+              >
+                {getDifficultyLabel(
+                  question.difficultyLevel as DifficultyLevel,
                 )}
-              </td>
+              </span>
+            </div>
 
-              <td class="px-5 py-4">
-                <div class="flex items-center gap-3">
-                  <div
-                    class="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100"
-                  >
-                    <div
-                      class="h-full rounded-full bg-blue-900"
-                      style={`width: ${getWeightProgressWidth(question.weight)}`}
-                    ></div>
-                  </div>
+            <p
+              class="line-clamp-4 text-sm font-semibold leading-6 text-slate-900"
+            >
+              {question.questionText}
+            </p>
 
-                  <span class="font-bold text-slate-700">
-                    {question.weight}
-                  </span>
-                </div>
-              </td>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-xs font-bold uppercase tracking-wide text-slate-400"
+                >
+                  Prioritas
+                </p>
 
-              <td class="px-5 py-4 font-bold text-slate-800">
-                {question.correctAnswer}
-              </td>
+                <p class="mt-1 font-semibold text-slate-700">
+                  {getWeightPriorityLabel(
+                    question.weightPriority as WeightPriority,
+                  )}
+                </p>
+              </div>
 
-              <td class="px-5 py-4">
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    onclick={() => goto(`/admin/questions/${question.id}/edit`)}
-                    class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-white"
-                  >
-                    Edit
-                  </button>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-xs font-bold uppercase tracking-wide text-slate-400"
+                >
+                  Kunci
+                </p>
 
-                  <button
-                    type="button"
-                    onclick={() => deleteQuestion(question.id)}
-                    class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
-                  >
-                    Hapus
-                  </button>
-                </div>
+                <p class="mt-1 font-bold text-slate-900">
+                  {question.correctAnswer}
+                </p>
+              </div>
+            </div>
+
+            <div class="mt-4 rounded-xl bg-slate-50 p-3">
+              <div class="flex items-center justify-between gap-3">
+                <p
+                  class="text-xs font-bold uppercase tracking-wide text-slate-400"
+                >
+                  Bobot Kemunculan
+                </p>
+
+                <p class="text-sm font-bold text-slate-900">
+                  {question.weight}
+                </p>
+              </div>
+
+              <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  class="h-full rounded-full bg-blue-900"
+                  style={`width: ${getWeightProgressWidth(question.weight)}`}
+                ></div>
+              </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onclick={() => goto(`/admin/questions/${question.id}/edit`)}
+                class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
+              >
+                Edit
+              </button>
+
+              <button
+                type="button"
+                onclick={() => deleteQuestion(question.id)}
+                class="rounded-xl border border-red-200 px-3 py-2 text-sm font-bold text-red-600"
+              >
+                Hapus
+              </button>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <div
+    class="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block"
+  >
+    <div class="overflow-x-auto">
+      <table class="min-w-[1180px] w-full text-left text-sm">
+        <thead
+          class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
+        >
+          <tr>
+            <th class="w-20 px-5 py-4">ID</th>
+            <th class="px-5 py-4">Question</th>
+            <th class="px-5 py-4">Bank / Subject</th>
+            <th class="px-5 py-4">Difficulty</th>
+            <th class="px-5 py-4">Prioritas</th>
+            <th class="px-5 py-4">Bobot Kemungkinan Kemunculan Soal</th>
+            <th class="px-5 py-4">Kunci</th>
+            <th class="px-5 py-4">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {#if loading}
+            <tr>
+              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+                Memuat data...
               </td>
             </tr>
-          {/each}
-        {/if}
-      </tbody>
-    </table>
+          {:else if questions.length === 0}
+            <tr>
+              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+                Belum ada soal pada bank soal ini.
+              </td>
+            </tr>
+          {:else}
+            {#each questions as question, index}
+              <tr class="border-t border-slate-100 hover:bg-slate-50/60">
+                <td class="px-5 py-4 text-xs font-semibold text-slate-400">
+                  {getQuestionShortId(index)}
+                </td>
+
+                <td class="max-w-xl px-5 py-4">
+                  <p
+                    class="line-clamp-3 font-semibold leading-6 text-slate-900"
+                  >
+                    {question.questionText}
+                  </p>
+                </td>
+
+                <td class="px-5 py-4">
+                  <p class="font-semibold text-slate-700">
+                    {question.subject.name}
+                  </p>
+                  <p class="text-xs text-slate-400">SMAN 1 Gowa</p>
+                </td>
+
+                <td class="px-5 py-4">
+                  <span
+                    class={`rounded-full px-3 py-1 text-xs font-bold ${getDifficultyBadgeClass(question.difficultyLevel as DifficultyLevel)}`}
+                  >
+                    {getDifficultyLabel(
+                      question.difficultyLevel as DifficultyLevel,
+                    )}
+                  </span>
+                </td>
+
+                <td class="px-5 py-4 text-slate-600">
+                  {getWeightPriorityLabel(
+                    question.weightPriority as WeightPriority,
+                  )}
+                </td>
+
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100"
+                    >
+                      <div
+                        class="h-full rounded-full bg-blue-900"
+                        style={`width: ${getWeightProgressWidth(question.weight)}`}
+                      ></div>
+                    </div>
+
+                    <span class="font-bold text-slate-700">
+                      {question.weight}
+                    </span>
+                  </div>
+                </td>
+
+                <td class="px-5 py-4 font-bold text-slate-800">
+                  {question.correctAnswer}
+                </td>
+
+                <td class="px-5 py-4">
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      onclick={() =>
+                        goto(`/admin/questions/${question.id}/edit`)}
+                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-white"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick={() => deleteQuestion(question.id)}
+                      class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          {/if}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>

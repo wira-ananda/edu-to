@@ -14,10 +14,9 @@ export type AppNavItem = {
   label: string;
   href: string;
   icon: AppNavIcon;
-  badge?: string;
 };
 
 export type AppNavGroup = {
-  title: string;
+  label: string;
   items: AppNavItem[];
 };

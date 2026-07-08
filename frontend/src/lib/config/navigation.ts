@@ -2,7 +2,7 @@ import type { AppNavGroup } from "$lib/types/navigation";
 
 export const adminNavGroups: AppNavGroup[] = [
   {
-    title: "Overview",
+    label: "Overview",
     items: [
       {
         label: "Dashboard",
@@ -12,7 +12,7 @@ export const adminNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    title: "Manajemen Soal",
+    label: "Manajemen Soal",
     items: [
       {
         label: "Bank Soal",
@@ -22,7 +22,7 @@ export const adminNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    title: "Manajemen Tryout",
+    label: "Manajemen Tryout",
     items: [
       {
         label: "Daftar Tryout",
@@ -37,7 +37,7 @@ export const adminNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    title: "Manajemen Akun",
+    label: "Manajemen Akun",
     items: [
       {
         label: "Daftar Akun",
@@ -51,23 +51,8 @@ export const adminNavGroups: AppNavGroup[] = [
       },
     ],
   },
-  // {
-  //   title: "Evaluasi & Log",
-  //   items: [
-  //     {
-  //       label: "WRS Logs",
-  //       href: "/admin/wrs-logs",
-  //       icon: "activity",
-  //     },
-  //     {
-  //       label: "Laporan Tryout",
-  //       href: "/admin/reports",
-  //       icon: "file-text",
-  //     },
-  //   ],
-  // },
   {
-    title: "Sistem",
+    label: "Sistem",
     items: [
       {
         label: "Pengaturan",
@@ -80,7 +65,7 @@ export const adminNavGroups: AppNavGroup[] = [
 
 export const studentNavGroups: AppNavGroup[] = [
   {
-    title: "Overview",
+    label: "Overview",
     items: [
       {
         label: "Dashboard",
@@ -90,7 +75,7 @@ export const studentNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    title: "Tryout",
+    label: "Tryout",
     items: [
       {
         label: "Mulai Tryout",
@@ -110,7 +95,7 @@ export const studentNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    title: "Akun",
+    label: "Akun",
     items: [
       {
         label: "Profil",
