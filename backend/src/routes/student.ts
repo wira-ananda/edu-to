@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 import { authMiddleware } from "../middlewares/auth";
 import { roleMiddleware } from "../middlewares/role";
 import { selectQuestionByWrs } from "../lib/wrs";
