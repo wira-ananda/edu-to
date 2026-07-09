@@ -3,13 +3,20 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import {
+    getAdminQuestionBanksCached,
+    getAdminQuestionsCached,
+    invalidateAdminQuestionBanksCache,
+    invalidateAdminQuestionsCache,
+    invalidateAdminTryoutsCache,
+    readAdminQuestionBanksCache,
+    readAdminQuestionsCache,
+  } from "$lib/cache/admin-page-cache";
 
   import type {
     DifficultyLevel,
     Question,
     QuestionBank,
-    QuestionBanksResponse,
-    QuestionsResponse,
     WeightPriority,
   } from "$lib/types/questions";
   import {
@@ -23,6 +30,7 @@
   const subjectId = $derived(page.params.subjectId || "");
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let errorMessage = $state("");
   let banks = $state<QuestionBank[]>([]);
   let questions = $state<Question[]>([]);
@@ -35,16 +43,23 @@
     banks.find((bank) => bank.id === subjectId) ?? null,
   );
 
-  async function loadBanks() {
-    const result = await apiFetch<QuestionBanksResponse>(
-      "/admin/question-banks",
-    );
+  async function loadBanks(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
 
-    banks = result.banks;
+    const cachedBanks = !force ? readAdminQuestionBanksCache() : null;
+
+    if (cachedBanks) {
+      banks = cachedBanks;
+      return;
+    }
+
+    banks = await getAdminQuestionBanksCached({ force });
   }
 
-  async function loadQuestions() {
-    loading = true;
+  async function loadQuestions(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
+    loading = questions.length === 0;
     errorMessage = "";
 
     try {
@@ -52,24 +67,40 @@
         throw new Error("Subject ID not found.");
       }
 
-      const params = new URLSearchParams();
+      const params = {
+        subjectId,
+        search,
+        difficultyLevel,
+        weightPriority,
+      };
 
-      params.set("subjectId", subjectId);
+      const cachedQuestions = !force ? readAdminQuestionsCache(params) : null;
 
-      if (search.trim()) params.set("search", search.trim());
-      if (difficultyLevel) params.set("difficultyLevel", difficultyLevel);
-      if (weightPriority) params.set("weightPriority", weightPriority);
+      if (cachedQuestions) {
+        questions = cachedQuestions;
+        loading = false;
+        return;
+      }
 
-      const result = await apiFetch<QuestionsResponse>(
-        `/admin/questions?${params.toString()}`,
-      );
-
-      questions = result.questions;
+      questions = await getAdminQuestionsCached(params, { force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat soal.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshPage() {
+    refreshing = true;
+    invalidateAdminQuestionBanksCache();
+    invalidateAdminQuestionsCache(subjectId);
+
+    try {
+      await loadBanks({ force: true });
+      await loadQuestions({ force: true });
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -83,22 +114,28 @@
         method: "DELETE",
       });
 
-      await loadBanks();
-      await loadQuestions();
+      invalidateAdminQuestionBanksCache();
+      invalidateAdminQuestionsCache(subjectId);
+      invalidateAdminTryoutsCache();
+
+      await loadBanks({ force: true });
+      await loadQuestions({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus soal.";
     }
   }
 
-  onMount(async () => {
-    try {
-      await loadBanks();
-      await loadQuestions();
-    } catch (error) {
-      errorMessage =
-        error instanceof Error ? error.message : "Gagal memuat bank soal.";
-    }
+  onMount(() => {
+    void (async () => {
+      try {
+        await loadBanks();
+        await loadQuestions();
+      } catch (error) {
+        errorMessage =
+          error instanceof Error ? error.message : "Gagal memuat bank soal.";
+      }
+    })();
   });
 </script>
 
@@ -126,13 +163,24 @@
       </p>
     </div>
 
-    <button
-      type="button"
-      onclick={() => goto(`/admin/questions/new?subjectId=${subjectId}`)}
-      class="w-full rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white sm:w-auto"
-    >
-      + Tambah Soal
-    </button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onclick={refreshPage}
+        disabled={loading || refreshing}
+        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+      >
+        {refreshing ? "Memuat..." : "Refresh"}
+      </button>
+
+      <button
+        type="button"
+        onclick={() => goto(`/admin/questions/new?subjectId=${subjectId}`)}
+        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      >
+        + Tambah Soal
+      </button>
+    </div>
   </div>
 
   {#if currentBank}
@@ -180,7 +228,7 @@
       class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5"
       onsubmit={(event) => {
         event.preventDefault();
-        loadQuestions();
+        void loadQuestions({ force: true });
       }}
     >
       <input

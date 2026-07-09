@@ -2,19 +2,36 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
-  import type { AdminTryoutItem, AdminTryoutsResponse } from "$lib/types/admin";
+  import {
+    getAdminTryoutsCached,
+    invalidateAdminTryoutsCache,
+    readAdminTryoutsCache,
+  } from "$lib/cache/admin-page-cache";
+  import type { AdminTryoutItem } from "$lib/types/admin";
 
   let loading = $state(true);
+  let refreshing = $state(false);
+  let deletingId = $state("");
   let errorMessage = $state("");
   let tryouts = $state<AdminTryoutItem[]>([]);
 
-  async function loadTryouts() {
-    loading = true;
+  async function loadTryouts(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
 
+    const cachedTryouts = !force ? readAdminTryoutsCache() : null;
+
+    if (cachedTryouts) {
+      tryouts = cachedTryouts;
+      loading = false;
+      return;
+    }
+
+    loading = tryouts.length === 0;
+
     try {
-      const result = await apiFetch<AdminTryoutsResponse>("/admin/tryouts");
-      tryouts = result.tryouts;
+      tryouts = await getAdminTryoutsCached({ force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat tryout.";
@@ -23,28 +40,50 @@
     }
   }
 
+  async function refreshTryouts() {
+    refreshing = true;
+    invalidateAdminTryoutsCache();
+
+    try {
+      await loadTryouts({ force: true });
+    } finally {
+      refreshing = false;
+    }
+  }
+
   async function deleteTryout(id: string) {
     const confirmed = confirm("Hapus tryout ini?");
 
     if (!confirmed) return;
+
+    deletingId = id;
+    errorMessage = "";
 
     try {
       await apiFetch(`/admin/tryouts/${id}`, {
         method: "DELETE",
       });
 
-      await loadTryouts();
+      invalidateAdminTryoutsCache();
+
+      await loadTryouts({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus tryout.";
+    } finally {
+      deletingId = "";
     }
   }
 
-  onMount(loadTryouts);
+  onMount(() => {
+    void loadTryouts();
+  });
 </script>
 
 <section class="space-y-5">
-  <div class="flex items-start justify-between">
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Daftar Tryout</h2>
       <p class="mt-1 text-sm text-slate-500">
@@ -52,13 +91,24 @@
       </p>
     </div>
 
-    <button
-      type="button"
-      onclick={() => goto("/admin/tryouts/new")}
-      class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
-    >
-      + Buat Tryout
-    </button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onclick={refreshTryouts}
+        disabled={loading || refreshing}
+        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+      >
+        {refreshing ? "Memuat..." : "Refresh"}
+      </button>
+
+      <button
+        type="button"
+        onclick={() => goto("/admin/tryouts/new")}
+        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      >
+        + Buat Tryout
+      </button>
+    </div>
   </div>
 
   {#if errorMessage}
@@ -140,10 +190,11 @@
 
                   <button
                     type="button"
+                    disabled={deletingId === tryout.id}
                     onclick={() => deleteTryout(tryout.id)}
-                    class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600"
+                    class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 disabled:opacity-50"
                   >
-                    Hapus
+                    {deletingId === tryout.id ? "Menghapus..." : "Hapus"}
                   </button>
                 </div>
               </td>

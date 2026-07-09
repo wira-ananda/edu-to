@@ -1,22 +1,36 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { apiFetch } from "$lib/api";
+  import {
+    getStudentSessionsCached,
+    invalidateStudentSessionsCache,
+    readStudentSessionsCache,
+  } from "$lib/cache/student-page-cache";
   import type { StudentSessionsResponse } from "$lib/types/student";
   import { getDifficultyLabel } from "$lib/types/questions";
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let errorMessage = $state("");
   let sessions = $state<StudentSessionsResponse["sessions"]>([]);
 
-  async function loadHistory() {
-    loading = true;
+  async function loadHistory(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
 
+    const cachedSessions = !force ? readStudentSessionsCache() : null;
+
+    if (cachedSessions) {
+      sessions = cachedSessions;
+      loading = false;
+      return;
+    }
+
+    loading = sessions.length === 0;
+
     try {
-      const result =
-        await apiFetch<StudentSessionsResponse>("/student/sessions");
-      sessions = result.sessions;
+      sessions = await getStudentSessionsCached({ force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat riwayat tryout.";
@@ -25,15 +39,41 @@
     }
   }
 
-  onMount(loadHistory);
+  async function refreshHistory() {
+    refreshing = true;
+    invalidateStudentSessionsCache();
+
+    try {
+      await loadHistory({ force: true });
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  onMount(() => {
+    void loadHistory();
+  });
 </script>
 
 <section class="space-y-5">
-  <div>
-    <h2 class="text-2xl font-bold text-slate-950">Riwayat Tryout</h2>
-    <p class="mt-1 text-sm text-slate-500">
-      Daftar sesi tryout yang pernah kamu kerjakan.
-    </p>
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
+    <div>
+      <h2 class="text-2xl font-bold text-slate-950">Riwayat Tryout</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        Daftar sesi tryout yang pernah kamu kerjakan.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onclick={refreshHistory}
+      disabled={loading || refreshing}
+      class="w-fit rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60"
+    >
+      {refreshing ? "Memuat..." : "Refresh"}
+    </button>
   </div>
 
   {#if errorMessage}

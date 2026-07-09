@@ -2,24 +2,47 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import { apiFetch } from "$lib/api";
+  import {
+    getStudentResultCached,
+    invalidateStudentResultCache,
+    readStudentResultCache,
+  } from "$lib/cache/student-page-cache";
   import type { StudentResultResponse } from "$lib/types/student";
   import { getDifficultyLabel } from "$lib/types/questions";
 
-  const sessionId = $derived(page.params.sessionId);
+  const sessionId = $derived(page.params.sessionId ?? "");
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let errorMessage = $state("");
   let result = $state<StudentResultResponse | null>(null);
 
-  async function loadResult() {
-    loading = true;
+  async function loadResult(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+    const currentSessionId = sessionId;
+
     errorMessage = "";
 
+    if (!currentSessionId) {
+      errorMessage = "Session ID tidak ditemukan.";
+      loading = false;
+      return;
+    }
+
+    const cachedResult = !force
+      ? readStudentResultCache(currentSessionId)
+      : null;
+
+    if (cachedResult) {
+      result = cachedResult;
+      loading = false;
+      return;
+    }
+
+    loading = result === null;
+
     try {
-      result = await apiFetch<StudentResultResponse>(
-        `/student/sessions/${sessionId}/result`,
-      );
+      result = await getStudentResultCached(currentSessionId, { force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat hasil tryout.";
@@ -28,15 +51,48 @@
     }
   }
 
-  onMount(loadResult);
+  async function refreshResult() {
+    const currentSessionId = sessionId;
+
+    if (!currentSessionId) {
+      errorMessage = "Session ID tidak ditemukan.";
+      return;
+    }
+
+    refreshing = true;
+    invalidateStudentResultCache(currentSessionId);
+
+    try {
+      await loadResult({ force: true });
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  onMount(() => {
+    void loadResult();
+  });
 </script>
 
 <section class="space-y-5">
-  <div>
-    <h2 class="text-2xl font-bold text-slate-950">Hasil Tryout</h2>
-    <p class="mt-1 text-sm text-slate-500">
-      Ringkasan nilai akhir dan jawaban siswa.
-    </p>
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
+    <div>
+      <h2 class="text-2xl font-bold text-slate-950">Hasil Tryout</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        Ringkasan nilai akhir dan jawaban siswa.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onclick={refreshResult}
+      disabled={loading || refreshing}
+      class="w-fit rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60"
+    >
+      {refreshing ? "Memuat..." : "Refresh"}
+    </button>
   </div>
 
   {#if errorMessage}
@@ -97,7 +153,7 @@
         Total soal: {result.session.totalQuestions}
       </p>
 
-      <div class="mt-5 flex gap-3">
+      <div class="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
           onclick={() => goto("/student/tryouts")}
@@ -144,7 +200,7 @@
               </td>
 
               <td class="px-5 py-4 font-bold text-slate-800">
-                {answer.selectedAnswer}
+                {answer.selectedAnswer ?? "-"}
               </td>
 
               <td class="px-5 py-4 font-bold text-slate-800">

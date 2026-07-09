@@ -2,29 +2,56 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import {
+    getStudentTryoutsCached,
+    invalidateStudentSessionsCache,
+    invalidateStudentTryoutsCache,
+    readStudentTryoutsCache,
+  } from "$lib/cache/student-page-cache";
   import type {
     StartTryoutResponse,
     StudentTryoutItem,
-    StudentTryoutsResponse,
   } from "$lib/types/student";
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let startingTryoutId = $state("");
   let errorMessage = $state("");
   let tryouts = $state<StudentTryoutItem[]>([]);
 
-  async function loadTryouts() {
-    loading = true;
+  async function loadTryouts(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
 
+    const cachedTryouts = !force ? readStudentTryoutsCache() : null;
+
+    if (cachedTryouts) {
+      tryouts = cachedTryouts;
+      loading = false;
+      return;
+    }
+
+    loading = tryouts.length === 0;
+
     try {
-      const result = await apiFetch<StudentTryoutsResponse>("/student/tryouts");
-      tryouts = result.tryouts;
+      tryouts = await getStudentTryoutsCached({ force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat daftar tryout.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshTryouts() {
+    refreshing = true;
+    invalidateStudentTryoutsCache();
+
+    try {
+      await loadTryouts({ force: true });
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -43,6 +70,8 @@
         },
       );
 
+      invalidateStudentSessionsCache();
+
       await goto(`/student/tryouts/${result.session.id}`);
     } catch (error) {
       errorMessage =
@@ -52,15 +81,30 @@
     }
   }
 
-  onMount(loadTryouts);
+  onMount(() => {
+    void loadTryouts();
+  });
 </script>
 
 <section class="space-y-5">
-  <div>
-    <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
-    <p class="mt-1 text-sm text-slate-500">
-      Pilih paket tryout yang sudah disiapkan admin.
-    </p>
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
+    <div>
+      <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        Pilih paket tryout yang sudah disiapkan admin.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onclick={refreshTryouts}
+      disabled={loading || refreshing}
+      class="w-fit rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60"
+    >
+      {refreshing ? "Memuat..." : "Refresh"}
+    </button>
   </div>
 
   {#if errorMessage}

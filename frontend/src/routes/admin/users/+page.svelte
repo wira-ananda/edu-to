@@ -2,34 +2,54 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
-  import type {
-    TeacherAccount,
-    TeacherAccountsResponse,
-    MutateTeacherResponse,
-  } from "$lib/types/users";
+  import {
+    getAdminTeacherAccountsCached,
+    invalidateAdminTeacherAccountsCache,
+    readAdminTeacherAccountsCache,
+  } from "$lib/cache/admin-page-cache";
+  import type { TeacherAccount, MutateTeacherResponse } from "$lib/types/users";
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let deletingId = $state("");
   let errorMessage = $state("");
   let successMessage = $state("");
   let teachers = $state<TeacherAccount[]>([]);
 
-  async function loadTeachers() {
-    loading = true;
+  async function loadTeachers(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
-    successMessage = "";
+
+    const cachedTeachers = !force ? readAdminTeacherAccountsCache() : null;
+
+    if (cachedTeachers) {
+      teachers = cachedTeachers;
+      loading = false;
+      return;
+    }
+
+    loading = teachers.length === 0;
 
     try {
-      const result = await apiFetch<TeacherAccountsResponse>(
-        "/admin/users/teachers",
-      );
-
-      teachers = result.teachers;
+      teachers = await getAdminTeacherAccountsCached({ force });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat akun guru.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshTeachers() {
+    refreshing = true;
+    successMessage = "";
+    invalidateAdminTeacherAccountsCache();
+
+    try {
+      await loadTeachers({ force: true });
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -51,7 +71,9 @@
       );
 
       successMessage = result.message;
-      await loadTeachers();
+      invalidateAdminTeacherAccountsCache();
+
+      await loadTeachers({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus akun guru.";
@@ -60,11 +82,15 @@
     }
   }
 
-  onMount(loadTeachers);
+  onMount(() => {
+    void loadTeachers();
+  });
 </script>
 
 <section class="space-y-5">
-  <div class="flex items-start justify-between">
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Akun Guru</h2>
       <p class="mt-1 text-sm text-slate-500">
@@ -72,13 +98,24 @@
       </p>
     </div>
 
-    <button
-      type="button"
-      onclick={() => goto("/admin/users/new")}
-      class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
-    >
-      + Tambah Guru
-    </button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onclick={refreshTeachers}
+        disabled={loading || refreshing}
+        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+      >
+        {refreshing ? "Memuat..." : "Refresh"}
+      </button>
+
+      <button
+        type="button"
+        onclick={() => goto("/admin/users/new")}
+        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      >
+        + Tambah Guru
+      </button>
+    </div>
   </div>
 
   {#if errorMessage}

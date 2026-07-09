@@ -2,10 +2,12 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
-  import type {
-    QuestionBank,
-    QuestionBanksResponse,
-  } from "$lib/types/questions";
+  import {
+    getAdminQuestionBanksCached,
+    invalidateAdminQuestionBanksCache,
+    readAdminQuestionBanksCache,
+  } from "$lib/cache/admin-page-cache";
+  import type { QuestionBank } from "$lib/types/questions";
 
   type CreateSubjectResponse = {
     ok: boolean;
@@ -18,6 +20,7 @@
   };
 
   let loading = $state(true);
+  let refreshing = $state(false);
   let creating = $state(false);
   let showCreateModal = $state(false);
 
@@ -34,15 +37,23 @@
     ),
   );
 
-  async function loadBanks() {
-    loading = true;
+  async function loadBanks(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
 
+    const cachedBanks = !force ? readAdminQuestionBanksCache() : null;
+
+    if (cachedBanks) {
+      banks = cachedBanks;
+      loading = false;
+      return;
+    }
+
+    loading = banks.length === 0;
+
     try {
-      const result = await apiFetch<QuestionBanksResponse>(
-        "/admin/question-banks",
-      );
-      banks = result.banks;
+      banks = await getAdminQuestionBanksCached({ force });
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -50,6 +61,18 @@
           : "Gagal memuat daftar bank soal.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshBanks() {
+    refreshing = true;
+    successMessage = "";
+    invalidateAdminQuestionBanksCache();
+
+    try {
+      await loadBanks({ force: true });
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -78,7 +101,9 @@
       newBankName = "";
       showCreateModal = false;
 
-      await loadBanks();
+      invalidateAdminQuestionBanksCache();
+
+      await loadBanks({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menambahkan bank soal.";
@@ -87,11 +112,15 @@
     }
   }
 
-  onMount(loadBanks);
+  onMount(() => {
+    void loadBanks();
+  });
 </script>
 
 <section class="space-y-5">
-  <div class="flex items-start justify-between">
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Bank Soal</h2>
 
@@ -101,17 +130,28 @@
       </p>
     </div>
 
-    <button
-      type="button"
-      onclick={() => {
-        showCreateModal = true;
-        errorMessage = "";
-        successMessage = "";
-      }}
-      class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
-    >
-      + Tambah Bank Soal
-    </button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onclick={refreshBanks}
+        disabled={loading || refreshing}
+        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+      >
+        {refreshing ? "Memuat..." : "Refresh"}
+      </button>
+
+      <button
+        type="button"
+        onclick={() => {
+          showCreateModal = true;
+          errorMessage = "";
+          successMessage = "";
+        }}
+        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+      >
+        + Tambah Bank Soal
+      </button>
+    </div>
   </div>
 
   <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
