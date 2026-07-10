@@ -1,8 +1,12 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import {
+    compressQuestionImage,
+    formatFileSize,
+  } from "$lib/utils/image-compression";
   import type {
     AnalyzeResult,
     AnswerOption,
@@ -14,6 +18,7 @@
   let subjects = $state<Subject[]>([]);
   let subjectId = $state("");
   let questionText = $state("");
+  let imageAltText = $state("");
   let optionA = $state("");
   let optionB = $state("");
   let optionC = $state("");
@@ -21,9 +26,14 @@
   let correctAnswer = $state<AnswerOption>("A");
   let weightPriority = $state<WeightPriority>("NORMAL");
 
+  let imageFile = $state<File | null>(null);
+  let imagePreviewUrl = $state("");
+  let imageInfo = $state("");
+
   let analyzeResult = $state<AnalyzeResult | null>(null);
   let loading = $state(false);
   let analyzing = $state(false);
+  let compressingImage = $state(false);
   let errorMessage = $state("");
 
   async function loadSubjects() {
@@ -46,10 +56,57 @@
     subjectId = result.subjects[0]?.id ?? "";
   }
 
+  function revokePreviewUrl() {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      imagePreviewUrl = "";
+    }
+  }
+
+  async function handleImageChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+
+    errorMessage = "";
+    analyzeResult = null;
+
+    if (!file) return;
+
+    compressingImage = true;
+
+    try {
+      const compressed = await compressQuestionImage(file);
+
+      revokePreviewUrl();
+
+      imageFile = compressed.file;
+      imagePreviewUrl = compressed.previewUrl;
+      imageInfo = `Gambar dikompresi menjadi ${formatFileSize(compressed.file.size)}.`;
+    } catch (error) {
+      imageFile = null;
+      imageInfo = "";
+      revokePreviewUrl();
+
+      input.value = "";
+
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal memproses gambar.";
+    } finally {
+      compressingImage = false;
+    }
+  }
+
+  function clearImage() {
+    imageFile = null;
+    imageInfo = "";
+    revokePreviewUrl();
+  }
+
   function getWeight(priority: WeightPriority) {
     if (priority === "LOW") return 1;
     if (priority === "NORMAL") return 3;
     if (priority === "HIGH") return 5;
+
     return 7;
   }
 
@@ -65,6 +122,8 @@
           method: "POST",
           body: JSON.stringify({
             questionText,
+            imageAltText,
+            hasImage: Boolean(imageFile),
             weightPriority,
           }),
         },
@@ -90,18 +149,25 @@
         throw new Error("Mata pelajaran belum tersedia. Jalankan seed dulu.");
       }
 
+      const formData = new FormData();
+
+      formData.set("subjectId", subjectId);
+      formData.set("questionText", questionText);
+      formData.set("imageAltText", imageAltText);
+      formData.set("optionA", optionA);
+      formData.set("optionB", optionB);
+      formData.set("optionC", optionC);
+      formData.set("optionD", optionD);
+      formData.set("correctAnswer", correctAnswer);
+      formData.set("weightPriority", weightPriority);
+
+      if (imageFile) {
+        formData.set("image", imageFile);
+      }
+
       await apiFetch("/admin/questions", {
         method: "POST",
-        body: JSON.stringify({
-          subjectId,
-          questionText,
-          optionA,
-          optionB,
-          optionC,
-          optionD,
-          correctAnswer,
-          weightPriority,
-        }),
+        body: formData,
       });
 
       await goto("/admin/questions");
@@ -116,6 +182,7 @@
   function difficultyLabel(level: DifficultyLevel) {
     if (level === "LOW") return "Mudah";
     if (level === "MEDIUM") return "Sedang";
+
     return "Sulit";
   }
 
@@ -123,6 +190,7 @@
     if (priority === "LOW") return "Rendah";
     if (priority === "NORMAL") return "Normal";
     if (priority === "HIGH") return "Tinggi";
+
     return "Sangat Tinggi";
   }
 
@@ -133,6 +201,10 @@
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat mata pelajaran.";
     }
+  });
+
+  onDestroy(() => {
+    revokePreviewUrl();
   });
 </script>
 
@@ -193,6 +265,78 @@
         ></textarea>
       </div>
 
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <label for="questionImage" class="text-sm font-semibold text-slate-700">
+          Gambar Soal
+        </label>
+
+        <p class="mt-1 text-xs text-slate-500">
+          Opsional. Format JPG, PNG, atau WEBP. Gambar akan otomatis diperkecil
+          dan dikompresi sebelum diupload.
+        </p>
+
+        <input
+          id="questionImage"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onchange={handleImageChange}
+          disabled={compressingImage}
+          class="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+        />
+
+        {#if compressingImage}
+          <p class="mt-2 text-sm font-semibold text-slate-500">
+            Mengompresi gambar...
+          </p>
+        {/if}
+
+        {#if imageInfo}
+          <p class="mt-2 text-sm font-semibold text-emerald-700">
+            {imageInfo}
+          </p>
+        {/if}
+
+        {#if imagePreviewUrl}
+          <div
+            class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white"
+          >
+            <img
+              src={imagePreviewUrl}
+              alt={imageAltText || "Preview gambar soal"}
+              class="max-h-[360px] w-full object-contain"
+            />
+          </div>
+
+          <button
+            type="button"
+            onclick={clearImage}
+            class="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600"
+          >
+            Hapus Gambar
+          </button>
+        {/if}
+
+        <div class="mt-4">
+          <label
+            for="imageAltText"
+            class="text-sm font-semibold text-slate-700"
+          >
+            Deskripsi Gambar / Alt Text
+          </label>
+
+          <input
+            id="imageAltText"
+            bind:value={imageAltText}
+            placeholder="Contoh: Grafik pertumbuhan populasi bakteri dari hari pertama sampai hari kelima"
+            class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          />
+
+          <p class="mt-1 text-xs text-slate-500">
+            Dipakai untuk aksesibilitas dan membantu analisis kesulitan soal.
+          </p>
+        </div>
+      </div>
+
       <div>
         <label
           for="weightPriority"
@@ -213,9 +357,10 @@
         </select>
 
         <p class="mt-2 text-sm text-slate-500">
-          Bobot WRS saat ini: <span class="font-semibold text-slate-900"
-            >{getWeight(weightPriority)}</span
-          >
+          Bobot WRS saat ini:
+          <span class="font-semibold text-slate-900">
+            {getWeight(weightPriority)}
+          </span>
         </p>
       </div>
 
@@ -330,7 +475,7 @@
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || compressingImage}
           class="rounded-lg bg-blue-900 px-4 py-2 font-semibold text-white disabled:opacity-60"
         >
           {loading ? "Menyimpan..." : "Simpan Soal"}

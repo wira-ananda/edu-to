@@ -70,6 +70,10 @@ model Question {
   optionD       String
   correctAnswer AnswerOption
 
+  imageUrl     String?
+  imagePath    String?
+  imageAltText String?
+
   difficultyLevel    DifficultyLevel
   difficultyScore    Int
   detectedIndicators Json
@@ -124,12 +128,12 @@ model TryoutSession {
 }
 
 model Answers {
-  id             String       @id @default(cuid())
+  id             String        @id @default(cuid())
   sessionId      String
   questionId     String
   selectedAnswer AnswerOption?
   isCorrect      Boolean
-  answeredAt     DateTime     @default(now())
+  answeredAt     DateTime      @default(now())
 
   session  TryoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)

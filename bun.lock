@@ -18,7 +18,7 @@
         "@neondatabase/serverless": "^1.1.0",
         "@prisma/adapter-neon": "^7.8.0",
         "@prisma/client": "^7.8.0",
-        "@supabase/supabase-js": "^2.110.1",
+        "@supabase/supabase-js": "^2.110.2",
         "dotenv": "^17.4.2",
         "hono": "^4.12.28",
         "ws": "^8.18.3",
@@ -37,7 +37,7 @@
       "name": "frontend",
       "version": "0.0.1",
       "dependencies": {
-        "@supabase/supabase-js": "^2.110.0",
+        "@supabase/supabase-js": "^2.110.2",
         "@tailwindcss/vite": "^4.3.2",
         "tailwindcss": "^4.3.2",
       },
@@ -217,19 +217,19 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@supabase/auth-js": ["@supabase/auth-js@2.110.1", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-8EJUoRoqzAYWkieHrLCrGrxs3cBbRB94xK8GzHe0aSLlSa4mt1enYLCiMgLiKJOF8GNYeX6PLTBNef0XAhILgw=="],
+    "@supabase/auth-js": ["@supabase/auth-js@2.110.2", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-Qj7a6EDP+AMMQFWqGv+qFa8r6re//dk+qQI5bA0KK+PZmnI3JPu97TDeNt6SMiQ2FkklP79hP2yDFYSnA989OA=="],
 
-    "@supabase/functions-js": ["@supabase/functions-js@2.110.1", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-Pm9HD9Qth6zQO0aOGZ3DxYb6QlCzrkTkP6eUEOvhTlbvcvYRDSCZXIJ5dkDLpqxD+gdrXfWDFOpU9BpRKYjsIQ=="],
+    "@supabase/functions-js": ["@supabase/functions-js@2.110.2", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-ZjjqrXpxM9/rE+eAtZxiK45EWy9EBoJQ322Q5Y75LccYQNh212neHTgXP/o4MIzmH0LNXT8UzvTZtQOfOzyoeQ=="],
 
     "@supabase/phoenix": ["@supabase/phoenix@0.4.4", "", {}, "sha512-Gt0pqoXuIqX/8dvG0OKp/wMCobXNH3klNbUPBNyOfN0YA1IswrM3HyWFMOPk1Jy+BRaIyDPcFx4jLBwHNmlyfQ=="],
 
-    "@supabase/postgrest-js": ["@supabase/postgrest-js@2.110.1", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-BILNhS40oGlP2bn/VJjh/1hCyrWNMmpGZGcCrPvqd5R3s8gf8Bd5qyKoHZdMwTKynGCuJGjagRXa069abhibMw=="],
+    "@supabase/postgrest-js": ["@supabase/postgrest-js@2.110.2", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-++LBmcIMwCtgO4tISQUmo9+2xkRwHQqS8ZKMCnhXLe9P8k8YQRXuMoh/RiSzQSoev8gqet0W7yOboW0cUxnt0Q=="],
 
-    "@supabase/realtime-js": ["@supabase/realtime-js@2.110.1", "", { "dependencies": { "@supabase/phoenix": "0.4.4", "tslib": "2.8.1" } }, "sha512-JmWCpMoe2iJPNrXIdHqIvf2Mie6NfSuWHS9Ve6YCmLkn1mNl3vrK3a67IukJ5lPjgmAzB+jFagyMz2oSIX+Xnw=="],
+    "@supabase/realtime-js": ["@supabase/realtime-js@2.110.2", "", { "dependencies": { "@supabase/phoenix": "0.4.4", "tslib": "2.8.1" } }, "sha512-z3jTOTPgyn6E3r6dVOOQ10He4yAMB2czjFw7xVdX3s16MHElna5rY1gVaePs0NIo6xvtMYbtmOXlFaFt/ePLpg=="],
 
-    "@supabase/storage-js": ["@supabase/storage-js@2.110.1", "", { "dependencies": { "iceberg-js": "^0.8.1", "tslib": "2.8.1" } }, "sha512-UqJGzhFMiIRBe8vT7a6ZtrN2U5YufH4Tk9nyc9KKfa2TUtV11BkSg/v3lyy/c4A8SbekVH3UywTF0s42zpF4zw=="],
+    "@supabase/storage-js": ["@supabase/storage-js@2.110.2", "", { "dependencies": { "iceberg-js": "^0.8.1", "tslib": "2.8.1" } }, "sha512-EhsRSwSnmQefKJsAxoRUZ0hvHr92ECM8DDGAKR5z0HdoJx4heI60PjHUTruVNZxKX6XeobLGDyLud020Bw1iwg=="],
 
-    "@supabase/supabase-js": ["@supabase/supabase-js@2.110.1", "", { "dependencies": { "@supabase/auth-js": "2.110.1", "@supabase/functions-js": "2.110.1", "@supabase/postgrest-js": "2.110.1", "@supabase/realtime-js": "2.110.1", "@supabase/storage-js": "2.110.1" } }, "sha512-MiJh0THZgyAvTWm91FOLknjH5dYjXRKOdxpuUsyTVZVXIf7FxCShzevIm4KGCubHRU2n25Gyt8PhTXIFzcD9FA=="],
+    "@supabase/supabase-js": ["@supabase/supabase-js@2.110.2", "", { "dependencies": { "@supabase/auth-js": "2.110.2", "@supabase/functions-js": "2.110.2", "@supabase/postgrest-js": "2.110.2", "@supabase/realtime-js": "2.110.2", "@supabase/storage-js": "2.110.2" } }, "sha512-r9q9w4ZQ6mOjh36aqUNFSisBF611vzpO8JphBESr2Q1SWvmGFQeI7Jq7Y+PaNMZ6Zszz+S2yTlJStCpnaMSnQg=="],
 
     "@sveltejs/acorn-typescript": ["@sveltejs/acorn-typescript@1.0.11", "", { "peerDependencies": { "acorn": "^8.9.0" } }, "sha512-LFuZUkjJ9iF7JZye/aG5XM0SFcQ5VyL0oVX4WJ9dc0Va3R3s0OauX1BESVCb+YN/ol8TAfqGDDAQsTG627Y5kw=="],
 

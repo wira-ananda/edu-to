@@ -1,8 +1,12 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import {
+    compressQuestionImage,
+    formatFileSize,
+  } from "$lib/utils/image-compression";
   import type {
     AnalyzeResult,
     AnswerOption,
@@ -12,11 +16,12 @@
     WeightPriority,
   } from "$lib/types/questions";
 
-  const id = page.params.id;
+  const id = $derived(page.params.id ?? "");
 
   let subjects = $state<Subject[]>([]);
   let subjectId = $state("");
   let questionText = $state("");
+  let imageAltText = $state("");
   let optionA = $state("");
   let optionB = $state("");
   let optionC = $state("");
@@ -24,11 +29,22 @@
   let correctAnswer = $state<AnswerOption>("A");
   let weightPriority = $state<WeightPriority>("NORMAL");
 
+  let existingImageUrl = $state("");
+  let imageFile = $state<File | null>(null);
+  let imagePreviewUrl = $state("");
+  let imageInfo = $state("");
+  let removeImage = $state(false);
+
   let analyzeResult = $state<AnalyzeResult | null>(null);
   let loading = $state(true);
   let saving = $state(false);
   let analyzing = $state(false);
+  let compressingImage = $state(false);
   let errorMessage = $state("");
+
+  const currentPreviewUrl = $derived(
+    imagePreviewUrl || (!removeImage ? existingImageUrl : ""),
+  );
 
   async function loadSubjects() {
     const result = await apiFetch<{ ok: boolean; subjects: Subject[] }>(
@@ -39,6 +55,10 @@
   }
 
   async function loadQuestion() {
+    if (!id) {
+      throw new Error("ID soal tidak ditemukan.");
+    }
+
     const result = await apiFetch<{ ok: boolean; question: Question }>(
       `/admin/questions/${id}`,
     );
@@ -47,6 +67,8 @@
 
     subjectId = question.subjectId;
     questionText = question.questionText;
+    imageAltText = question.imageAltText ?? "";
+    existingImageUrl = question.imageUrl ?? "";
     optionA = question.optionA;
     optionB = question.optionB;
     optionC = question.optionC;
@@ -63,10 +85,70 @@
     };
   }
 
+  function revokePreviewUrl() {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      imagePreviewUrl = "";
+    }
+  }
+
+  async function handleImageChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+
+    errorMessage = "";
+    analyzeResult = null;
+
+    if (!file) return;
+
+    compressingImage = true;
+
+    try {
+      const compressed = await compressQuestionImage(file);
+
+      revokePreviewUrl();
+
+      imageFile = compressed.file;
+      imagePreviewUrl = compressed.previewUrl;
+      imageInfo = `Gambar baru dikompresi menjadi ${formatFileSize(compressed.file.size)}.`;
+      removeImage = false;
+    } catch (error) {
+      imageFile = null;
+      imageInfo = "";
+      revokePreviewUrl();
+
+      input.value = "";
+
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal memproses gambar.";
+    } finally {
+      compressingImage = false;
+    }
+  }
+
+  function clearNewImage() {
+    imageFile = null;
+    imageInfo = "";
+    revokePreviewUrl();
+  }
+
+  function removeCurrentImage() {
+    clearNewImage();
+    removeImage = true;
+    imageInfo = "Gambar lama akan dihapus setelah perubahan disimpan.";
+    analyzeResult = null;
+  }
+
+  function cancelRemoveImage() {
+    removeImage = false;
+    imageInfo = "";
+  }
+
   function getWeight(priority: WeightPriority) {
     if (priority === "LOW") return 1;
     if (priority === "NORMAL") return 3;
     if (priority === "HIGH") return 5;
+
     return 7;
   }
 
@@ -81,6 +163,8 @@
           method: "POST",
           body: JSON.stringify({
             questionText,
+            imageAltText,
+            hasImage: Boolean(currentPreviewUrl),
             weightPriority,
           }),
         },
@@ -102,18 +186,30 @@
     errorMessage = "";
 
     try {
+      if (!id) {
+        throw new Error("ID soal tidak ditemukan.");
+      }
+
+      const formData = new FormData();
+
+      formData.set("subjectId", subjectId);
+      formData.set("questionText", questionText);
+      formData.set("imageAltText", imageAltText);
+      formData.set("optionA", optionA);
+      formData.set("optionB", optionB);
+      formData.set("optionC", optionC);
+      formData.set("optionD", optionD);
+      formData.set("correctAnswer", correctAnswer);
+      formData.set("weightPriority", weightPriority);
+      formData.set("removeImage", String(removeImage));
+
+      if (imageFile) {
+        formData.set("image", imageFile);
+      }
+
       await apiFetch(`/admin/questions/${id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          subjectId,
-          questionText,
-          optionA,
-          optionB,
-          optionC,
-          optionD,
-          correctAnswer,
-          weightPriority,
-        }),
+        body: formData,
       });
 
       await goto("/admin/questions");
@@ -128,6 +224,7 @@
   function difficultyLabel(level: DifficultyLevel) {
     if (level === "LOW") return "Mudah";
     if (level === "MEDIUM") return "Sedang";
+
     return "Sulit";
   }
 
@@ -135,6 +232,7 @@
     if (priority === "LOW") return "Rendah";
     if (priority === "NORMAL") return "Normal";
     if (priority === "HIGH") return "Tinggi";
+
     return "Sangat Tinggi";
   }
 
@@ -148,6 +246,10 @@
     } finally {
       loading = false;
     }
+  });
+
+  onDestroy(() => {
+    revokePreviewUrl();
   });
 </script>
 
@@ -214,6 +316,105 @@
           ></textarea>
         </div>
 
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <label
+            for="questionImage"
+            class="text-sm font-semibold text-slate-700"
+          >
+            Gambar Soal
+          </label>
+
+          <p class="mt-1 text-xs text-slate-500">
+            Opsional. Format JPG, PNG, atau WEBP. Gambar baru akan otomatis
+            diperkecil dan dikompresi sebelum diupload.
+          </p>
+
+          {#if currentPreviewUrl}
+            <div
+              class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white"
+            >
+              <img
+                src={currentPreviewUrl}
+                alt={imageAltText || "Preview gambar soal"}
+                class="max-h-[360px] w-full object-contain"
+              />
+            </div>
+          {/if}
+
+          {#if imageInfo}
+            <p class="mt-3 text-sm font-semibold text-emerald-700">
+              {imageInfo}
+            </p>
+          {/if}
+
+          <div class="mt-4 flex flex-wrap gap-3">
+            {#if imageFile}
+              <button
+                type="button"
+                onclick={clearNewImage}
+                class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600"
+              >
+                Batalkan Gambar Baru
+              </button>
+            {/if}
+
+            {#if existingImageUrl && !removeImage && !imageFile}
+              <button
+                type="button"
+                onclick={removeCurrentImage}
+                class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600"
+              >
+                Hapus Gambar Lama
+              </button>
+            {/if}
+
+            {#if removeImage}
+              <button
+                type="button"
+                onclick={cancelRemoveImage}
+                class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+              >
+                Batalkan Hapus Gambar
+              </button>
+            {/if}
+          </div>
+
+          <input
+            id="questionImage"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onchange={handleImageChange}
+            disabled={compressingImage}
+            class="mt-4 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          />
+
+          {#if compressingImage}
+            <p class="mt-2 text-sm font-semibold text-slate-500">
+              Mengompresi gambar...
+            </p>
+          {/if}
+
+          <div class="mt-4">
+            <label
+              for="imageAltText"
+              class="text-sm font-semibold text-slate-700"
+            >
+              Deskripsi Gambar / Alt Text
+            </label>
+
+            <input
+              id="imageAltText"
+              bind:value={imageAltText}
+              placeholder="Contoh: Diagram struktur sel tumbuhan"
+              class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+
+            <p class="mt-1 text-xs text-slate-500">
+              Dipakai untuk aksesibilitas dan membantu analisis kesulitan soal.
+            </p>
+          </div>
+        </div>
+
         <div>
           <label
             for="weightPriority"
@@ -235,9 +436,9 @@
 
           <p class="mt-2 text-sm text-slate-500">
             Bobot WRS saat ini:
-            <span class="font-semibold text-slate-900"
-              >{getWeight(weightPriority)}</span
-            >
+            <span class="font-semibold text-slate-900">
+              {getWeight(weightPriority)}
+            </span>
           </p>
         </div>
 
@@ -355,7 +556,7 @@
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || compressingImage}
             class="rounded-lg bg-blue-900 px-4 py-2 font-semibold text-white disabled:opacity-60"
           >
             {saving ? "Menyimpan..." : "Simpan Perubahan"}

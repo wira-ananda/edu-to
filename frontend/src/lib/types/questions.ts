@@ -40,6 +40,10 @@ export type Question = {
   optionD: string;
   correctAnswer: AnswerOption;
 
+  imageUrl: string | null;
+  imagePath: string | null;
+  imageAltText: string | null;
+
   difficultyLevel: DifficultyLevel;
   difficultyScore: number;
   detectedIndicators: string[];
@@ -64,6 +68,7 @@ export type AnalyzeResult = {
 export type QuestionFormData = {
   subjectId: string;
   questionText: string;
+  imageAltText?: string | null;
   optionA: string;
   optionB: string;
   optionC: string;
@@ -74,10 +79,14 @@ export type QuestionFormData = {
 
 export type CreateQuestionPayload = QuestionFormData;
 
-export type UpdateQuestionPayload = QuestionFormData;
+export type UpdateQuestionPayload = QuestionFormData & {
+  removeImage?: boolean;
+};
 
 export type AnalyzeQuestionPayload = {
   questionText: string;
+  imageAltText?: string | null;
+  hasImage?: boolean;
   weightPriority: WeightPriority;
 };
 
@@ -162,6 +171,7 @@ export const answerOptions: AnswerOption[] = ["A", "B", "C", "D"];
 export function getDifficultyLabel(level: DifficultyLevel) {
   if (level === "LOW") return "Mudah";
   if (level === "MEDIUM") return "Sedang";
+
   return "Sulit";
 }
 
@@ -181,6 +191,7 @@ export function getWeightPriorityLabel(priority: WeightPriority) {
   if (priority === "LOW") return "Rendah";
   if (priority === "NORMAL") return "Normal";
   if (priority === "HIGH") return "Tinggi";
+
   return "Sangat Tinggi";
 }
 
@@ -188,6 +199,7 @@ export function getWeightFromPriority(priority: WeightPriority) {
   if (priority === "LOW") return 1;
   if (priority === "NORMAL") return 3;
   if (priority === "HIGH") return 5;
+
   return 7;
 }
 

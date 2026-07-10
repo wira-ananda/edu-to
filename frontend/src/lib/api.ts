@@ -5,13 +5,18 @@ type ApiFetchOptions = RequestInit & {
   auth?: boolean;
 };
 
+function isFormDataBody(body: BodyInit | null | undefined) {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   options: ApiFetchOptions = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
+  const bodyIsFormData = isFormDataBody(options.body);
 
-  if (!headers.has("Content-Type")) {
+  if (!bodyIsFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 

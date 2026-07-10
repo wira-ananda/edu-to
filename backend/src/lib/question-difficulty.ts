@@ -37,6 +37,7 @@ const mediumKeywords = [
   "mengapa",
   "tentukan",
   "klasifikasikan",
+  "uraikan",
   "analisis sederhana",
 ];
 
@@ -53,6 +54,9 @@ const hardKeywords = [
   "hubungkan dengan",
   "studi kasus",
   "pemecahan masalah",
+  "hipotesis",
+  "korelasi",
+  "eksperimen",
 ];
 
 const visualKeywords = [
@@ -70,27 +74,50 @@ const visualKeywords = [
 ];
 
 function normalizeText(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[“”"'`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsKeyword(text: string, keyword: string) {
+  const escapedKeyword = escapeRegExp(keyword);
+
+  const pattern = new RegExp(
+    `(^|[^a-z0-9])${escapedKeyword}($|[^a-z0-9])`,
+    "i",
+  );
+
+  return pattern.test(text);
+}
+
+function collectKeywordMatches(text: string, keywords: string[]) {
+  return keywords.filter((keyword) => containsKeyword(text, keyword));
 }
 
 function getDifficultyInputPayload(input: DifficultyInput) {
   if (typeof input === "string") {
     return {
       questionText: input,
-      imageAltText: null,
+      imageAltText: "",
       hasImage: false,
     };
   }
 
   return {
     questionText: input.questionText,
-    imageAltText: input.imageAltText ?? null,
+    imageAltText: input.imageAltText ?? "",
     hasImage: Boolean(input.hasImage),
   };
 }
 
-function collectKeywordMatches(text: string, keywords: string[]) {
-  return keywords.filter((keyword) => text.includes(keyword));
+function addIndicator(indicators: Set<string>, indicator: string) {
+  indicators.add(indicator);
 }
 
 export function classifyQuestionDifficulty(
@@ -98,69 +125,101 @@ export function classifyQuestionDifficulty(
 ): DifficultyResult {
   const payload = getDifficultyInputPayload(input);
 
-  const questionText = normalizeText(payload.questionText);
-  const imageAltText = normalizeText(payload.imageAltText ?? "");
-  const combinedText = normalizeText(`${questionText} ${imageAltText}`);
+  const normalizedQuestionText = normalizeText(payload.questionText);
+
+  const normalizedImageAltText = payload.hasImage
+    ? normalizeText(payload.imageAltText)
+    : "";
+
+  const combinedText = normalizeText(
+    `${normalizedQuestionText} ${normalizedImageAltText}`,
+  );
 
   const easyMatches = collectKeywordMatches(combinedText, easyKeywords);
+
   const mediumMatches = collectKeywordMatches(combinedText, mediumKeywords);
-  const hardMatches = collectKeywordMatches(combinedText, hardKeywords);
+
+  const textForHardMatching = mediumMatches.includes("analisis sederhana")
+    ? combinedText.replaceAll("analisis sederhana", " ")
+    : combinedText;
+
+  const hardMatches = collectKeywordMatches(textForHardMatching, hardKeywords);
+
   const visualMatches = collectKeywordMatches(combinedText, visualKeywords);
 
+  const detectedIndicators = new Set<string>();
   let difficultyScore = 0;
-  const detectedIndicators: string[] = [];
 
-  if (easyMatches.length > 0) {
-    difficultyScore += easyMatches.length;
-    detectedIndicators.push(...easyMatches.map((keyword) => `easy:${keyword}`));
+  for (const keyword of easyMatches) {
+    addIndicator(detectedIndicators, `Kata kerja tingkat mudah: ${keyword}`);
   }
 
-  if (mediumMatches.length > 0) {
-    difficultyScore += mediumMatches.length * 2;
-    detectedIndicators.push(
-      ...mediumMatches.map((keyword) => `medium:${keyword}`),
-    );
+  for (const keyword of mediumMatches) {
+    difficultyScore += 2;
+
+    addIndicator(detectedIndicators, `Kata kerja tingkat sedang: ${keyword}`);
   }
 
-  if (hardMatches.length > 0) {
-    difficultyScore += hardMatches.length * 3;
-    detectedIndicators.push(...hardMatches.map((keyword) => `hard:${keyword}`));
+  for (const keyword of hardMatches) {
+    difficultyScore += 3;
+
+    addIndicator(detectedIndicators, `Kata kerja tingkat sulit: ${keyword}`);
   }
 
   if (payload.hasImage) {
     difficultyScore += 1;
-    detectedIndicators.push("visual:has-image");
+
+    addIndicator(detectedIndicators, "Soal memiliki gambar pendukung");
   }
 
   if (payload.hasImage && visualMatches.length > 0) {
-    difficultyScore += visualMatches.length;
-    detectedIndicators.push(
-      ...visualMatches.map((keyword) => `visual:${keyword}`),
+    difficultyScore += 1;
+
+    addIndicator(
+      detectedIndicators,
+      `Membutuhkan interpretasi visual: ${visualMatches.join(", ")}`,
     );
   }
 
-  if (combinedText.length > 180) {
+  const wordCount = normalizedQuestionText.split(" ").filter(Boolean).length;
+
+  if (wordCount >= 35) {
     difficultyScore += 1;
-    detectedIndicators.push("text:length-medium");
+
+    addIndicator(detectedIndicators, "Teks soal cukup panjang");
   }
 
-  if (combinedText.length > 320) {
+  if (wordCount >= 60) {
     difficultyScore += 1;
-    detectedIndicators.push("text:length-long");
+
+    addIndicator(detectedIndicators, "Teks soal sangat panjang");
+  }
+
+  if (/\d/.test(normalizedQuestionText)) {
+    difficultyScore += 1;
+
+    addIndicator(detectedIndicators, "Mengandung angka atau data numerik");
+  }
+
+  if (detectedIndicators.size === 0) {
+    addIndicator(
+      detectedIndicators,
+      "Tidak ditemukan indikator kesulitan khusus",
+    );
   }
 
   let difficultyLevel: DifficultyLevel = "LOW";
 
-  if (difficultyScore >= 6) {
+  if (difficultyScore >= 5) {
     difficultyLevel = "HIGH";
-  } else if (difficultyScore >= 3) {
+  } else if (difficultyScore >= 2) {
     difficultyLevel = "MEDIUM";
   }
 
   return {
     difficultyLevel,
     difficultyScore,
-    detectedIndicators,
+    detectedIndicators: Array.from(detectedIndicators),
   };
 }
 
@@ -187,9 +246,9 @@ export function analyzeQuestionDifficulty(
 export function getWeightByPriority(priority: WeightPriority) {
   const weightMap: Record<WeightPriority, number> = {
     LOW: 1,
-    NORMAL: 2,
-    HIGH: 3,
-    VERY_HIGH: 4,
+    NORMAL: 3,
+    HIGH: 5,
+    VERY_HIGH: 7,
   };
 
   return weightMap[priority];

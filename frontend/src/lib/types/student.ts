@@ -57,6 +57,8 @@ export type StudentQuestion = {
   optionB: string;
   optionC: string;
   optionD: string;
+  imageUrl: string | null;
+  imageAltText: string | null;
   difficultyLevel: DifficultyLevel;
 };
 
@@ -103,6 +105,17 @@ export type StudentSessionsResponse = {
   sessions: StudentSession[];
 };
 
+export type StudentResultAnswer = {
+  id: string;
+  questionText: string;
+  imageUrl: string | null;
+  imageAltText: string | null;
+  selectedAnswer: AnswerOption | null;
+  correctAnswer: AnswerOption;
+  isCorrect: boolean;
+  answeredAt: string;
+};
+
 export type StudentResultResponse = {
   ok: boolean;
   session: {
@@ -119,14 +132,7 @@ export type StudentResultResponse = {
     startedAt: string;
     finishedAt: string | null;
   };
-  answers: {
-    id: string;
-    questionText: string;
-    selectedAnswer: AnswerOption | null;
-    correctAnswer: AnswerOption;
-    isCorrect: boolean;
-    answeredAt: string;
-  }[];
+  answers: StudentResultAnswer[];
   wrsLogs: {
     id: string;
     currentLevel: DifficultyLevel;
