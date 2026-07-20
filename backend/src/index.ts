@@ -33,7 +33,7 @@ const registerSchema = z.object({
 
 function cleanOptionalText(value?: string | null) {
   const cleaned = value?.trim();
-  return cleaned ? cleaned : null;
+  return cleaned ? cleaned : null; 
 }
 
 function getErrorMessage(error: unknown) {

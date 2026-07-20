@@ -171,9 +171,7 @@ function normalizeQuestionRequestBody(
     optionC: getTextField(body, "optionC"),
     optionD: getTextField(body, "optionD"),
     correctAnswer: getTextField(body, "correctAnswer"),
-
     weightPriority: getTextField(body, "weightPriority") || "NORMAL",
-
     removeImage: getBooleanField(body, "removeImage"),
   };
 }
@@ -278,6 +276,13 @@ adminRoutes.get("/check", async (c) => {
 
 adminRoutes.get("/subjects", async (c) => {
   const subjects = await prisma.subject.findMany({
+    include: {
+      _count: {
+        select: {
+          questions: true,
+        },
+      },
+    },
     orderBy: {
       name: "asc",
     },
@@ -285,7 +290,13 @@ adminRoutes.get("/subjects", async (c) => {
 
   return c.json({
     ok: true,
-    subjects,
+    subjects: subjects.map((subject) => ({
+      id: subject.id,
+      name: subject.name,
+      createdAt: subject.createdAt,
+      updatedAt: subject.updatedAt,
+      totalAvailableQuestions: subject._count.questions,
+    })),
   });
 });
 
@@ -402,7 +413,7 @@ adminRoutes.get("/questions", async (c) => {
   const filters: Prisma.QuestionWhereInput[] = [];
 
   if (search) {
-    const searchFilter: Prisma.QuestionWhereInput = {
+    filters.push({
       OR: [
         {
           questionText: {
@@ -417,9 +428,7 @@ adminRoutes.get("/questions", async (c) => {
           },
         },
       ],
-    };
-
-    filters.push(searchFilter);
+    });
   }
 
   if (subjectId) {
@@ -498,9 +507,13 @@ adminRoutes.get("/question-banks", async (c) => {
     };
 
     for (const question of subject.questions) {
-      difficultyCounts[question.difficultyLevel] += 1;
+      const difficulty = question.difficultyLevel as DifficultyLevel;
 
-      priorityCounts[question.weightPriority] += 1;
+      const priority = question.weightPriority as WeightPriority;
+
+      difficultyCounts[difficulty] += 1;
+
+      priorityCounts[priority] += 1;
     }
 
     return {
@@ -631,8 +644,11 @@ adminRoutes.post("/questions", async (c) => {
         imageAltText,
 
         optionA: parsed.data.optionA,
+
         optionB: parsed.data.optionB,
+
         optionC: parsed.data.optionC,
+
         optionD: parsed.data.optionD,
 
         correctAnswer: parsed.data.correctAnswer,
@@ -798,8 +814,11 @@ adminRoutes.put("/questions/:id", async (c) => {
               }),
 
         optionA: parsed.data.optionA,
+
         optionB: parsed.data.optionB,
+
         optionC: parsed.data.optionC,
+
         optionD: parsed.data.optionD,
 
         correctAnswer: parsed.data.correctAnswer,
@@ -889,12 +908,14 @@ adminRoutes.get("/tryouts", async (c) => {
           },
         },
       },
+
       _count: {
         select: {
           sessions: true,
         },
       },
     },
+
     orderBy: {
       createdAt: "desc",
     },
@@ -912,6 +933,7 @@ adminRoutes.get("/tryouts", async (c) => {
       durationMinutes: tryout.durationMinutes,
 
       createdAt: tryout.createdAt,
+
       updatedAt: tryout.updatedAt,
 
       bank: {
@@ -933,6 +955,7 @@ adminRoutes.get("/tryouts/:id", async (c) => {
     where: {
       id,
     },
+
     include: {
       subject: {
         include: {
@@ -943,6 +966,7 @@ adminRoutes.get("/tryouts/:id", async (c) => {
           },
         },
       },
+
       _count: {
         select: {
           sessions: true,
@@ -967,6 +991,7 @@ adminRoutes.get("/tryouts/:id", async (c) => {
     tryout: {
       id: tryout.id,
       subjectId: tryout.subjectId,
+
       title: tryout.title,
 
       totalQuestions: tryout.totalQuestions,
@@ -974,6 +999,7 @@ adminRoutes.get("/tryouts/:id", async (c) => {
       durationMinutes: tryout.durationMinutes,
 
       createdAt: tryout.createdAt,
+
       updatedAt: tryout.updatedAt,
 
       bank: {
@@ -1028,6 +1054,7 @@ adminRoutes.post("/tryouts", async (c) => {
 
       durationMinutes: parsed.data.durationMinutes,
     },
+
     include: {
       subject: true,
     },
@@ -1095,6 +1122,7 @@ adminRoutes.put("/tryouts/:id", async (c) => {
     where: {
       id,
     },
+
     data: {
       subjectId: parsed.data.subjectId,
 
@@ -1104,6 +1132,7 @@ adminRoutes.put("/tryouts/:id", async (c) => {
 
       durationMinutes: parsed.data.durationMinutes,
     },
+
     include: {
       subject: true,
     },
@@ -1123,6 +1152,7 @@ adminRoutes.delete("/tryouts/:id", async (c) => {
     where: {
       id,
     },
+
     include: {
       _count: {
         select: {
