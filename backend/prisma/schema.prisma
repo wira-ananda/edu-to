@@ -8,6 +8,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  TEACHER
   STUDENT
 }
 
@@ -36,6 +37,12 @@ enum AnswerOption {
   D
 }
 
+enum TryoutStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
 model User {
   id             String   @id @default(cuid())
   supabaseUserId String   @unique
@@ -48,21 +55,37 @@ model User {
   updatedAt      DateTime @updatedAt
 
   sessions TryoutSession[]
+
+  ownedSubjects  Subject[]  @relation("SubjectOwner")
+  ownedQuestions Question[] @relation("QuestionOwner")
+  ownedTryouts   Tryout[]   @relation("TryoutOwner")
+
+  @@index([role])
 }
 
 model Subject {
-  id        String   @id @default(cuid())
-  name      String   @unique
+  id      String  @id @default(cuid())
+  name    String
+  ownerId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  owner User? @relation("SubjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
   questions Question[]
   tryouts   Tryout[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@index([name])
 }
 
 model Question {
-  id            String       @id @default(cuid())
-  subjectId     String
+  id        String  @id @default(cuid())
+  subjectId String
+  ownerId   String?
+
   questionText  String
   optionA       String
   optionB       String
@@ -85,32 +108,54 @@ model Question {
   updatedAt DateTime @updatedAt
 
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  owner   User?   @relation("QuestionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   answers Answers[]
   wrsLogs WrsLog[]
 
   @@index([subjectId])
+  @@index([ownerId])
   @@index([difficultyLevel])
   @@index([subjectId, difficultyLevel])
+  @@index([weightPriority])
 }
 
 model Tryout {
-  id              String   @id @default(cuid())
-  subjectId       String
+  id        String  @id @default(cuid())
+  subjectId String
+  ownerId   String?
+
   title           String
   totalQuestions  Int
   durationMinutes Int
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
 
-  subject  Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  // 1 = one attempt only
+  // 2 or more = limited attempts
+  // null = unlimited attempts until owner closes the tryout
+  maxAttempts Int? @default(1)
+
+  status TryoutStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  owner   User?   @relation("TryoutOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
   sessions TryoutSession[]
+
+  @@index([subjectId])
+  @@index([ownerId])
+  @@index([status])
 }
 
 model TryoutSession {
-  id             String          @id @default(cuid())
-  userId         String
-  tryoutId       String
+  id       String @id @default(cuid())
+  userId   String
+  tryoutId String
+
+  attemptNumber Int @default(1)
+
   initialLevel   DifficultyLevel
   currentLevel   DifficultyLevel
   totalQuestions Int
@@ -121,10 +166,17 @@ model TryoutSession {
   startedAt      DateTime        @default(now())
   finishedAt     DateTime?
 
-  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tryout  Tryout    @relation(fields: [tryoutId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tryout Tryout @relation(fields: [tryoutId], references: [id], onDelete: Cascade)
+
   answers Answers[]
   wrsLogs WrsLog[]
+
+  @@index([userId])
+  @@index([tryoutId])
+  @@index([status])
+  @@index([userId, tryoutId])
+  @@index([userId, tryoutId, attemptNumber])
 }
 
 model Answers {
@@ -139,6 +191,8 @@ model Answers {
   question Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@index([questionId])
 }
 
 model WrsLog {
@@ -155,4 +209,7 @@ model WrsLog {
 
   session  TryoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([questionId])
 }

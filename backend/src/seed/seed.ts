@@ -25,7 +25,7 @@ type SeedUser = {
   email: string;
   password: string;
   name: string;
-  role: "ADMIN" | "STUDENT";
+  role: "ADMIN" | "TEACHER" | "STUDENT";
   school?: string;
   className?: string;
 };
@@ -36,6 +36,13 @@ const users: SeedUser[] = [
     password: "password123",
     name: "Admin EduTryout",
     role: "ADMIN",
+    school: "SMAN 1 Gowa",
+  },
+  {
+    email: "teacher@test.com",
+    password: "password123",
+    name: "Teacher EduTryout",
+    role: "TEACHER",
     school: "SMAN 1 Gowa",
   },
   {
@@ -99,46 +106,73 @@ async function createOrGetSupabaseUser(seedUser: SeedUser) {
   return data.user;
 }
 
-async function main() {
-  for (const subjectName of subjects) {
-    await prisma.subject.upsert({
-      where: {
-        name: subjectName,
-      },
-      update: {},
-      create: {
-        name: subjectName,
-      },
-    });
+async function createOrUpdateAppUser(seedUser: SeedUser) {
+  const supabaseUser = await createOrGetSupabaseUser(seedUser);
 
-    console.log(`Seeded subject: ${subjectName}`);
+  const user = await prisma.user.upsert({
+    where: {
+      supabaseUserId: supabaseUser.id,
+    },
+    update: {
+      name: seedUser.name,
+      email: seedUser.email,
+      role: seedUser.role,
+      school: seedUser.school,
+      className: seedUser.className,
+    },
+    create: {
+      supabaseUserId: supabaseUser.id,
+      name: seedUser.name,
+      email: seedUser.email,
+      role: seedUser.role,
+      school: seedUser.school,
+      className: seedUser.className,
+    },
+  });
+
+  console.log(`Seeded ${seedUser.role}: ${seedUser.email}`);
+
+  return user;
+}
+
+async function createSubjectIfNotExists(name: string, ownerId: string | null) {
+  const existingSubject = await prisma.subject.findFirst({
+    where: {
+      name,
+      ownerId,
+    },
+  });
+
+  if (existingSubject) {
+    console.log(`Subject already exists: ${name}`);
+    return existingSubject;
   }
 
-  for (const seedUser of users) {
-    const supabaseUser = await createOrGetSupabaseUser(seedUser);
+  const subject = await prisma.subject.create({
+    data: {
+      name,
+      ownerId,
+    },
+  });
 
-    await prisma.user.upsert({
-      where: {
-        supabaseUserId: supabaseUser.id,
-      },
-      update: {
-        name: seedUser.name,
-        email: seedUser.email,
-        role: seedUser.role,
-        school: seedUser.school,
-        className: seedUser.className,
-      },
-      create: {
-        supabaseUserId: supabaseUser.id,
-        name: seedUser.name,
-        email: seedUser.email,
-        role: seedUser.role,
-        school: seedUser.school,
-        className: seedUser.className,
-      },
-    });
+  console.log(`Seeded subject: ${name}`);
 
-    console.log(`Seeded ${seedUser.role}: ${seedUser.email}`);
+  return subject;
+}
+
+async function main() {
+  const appUsers = await Promise.all(
+    users.map((seedUser) => createOrUpdateAppUser(seedUser)),
+  );
+
+  const teacher = appUsers.find((user) => user.role === "TEACHER");
+
+  if (!teacher) {
+    throw new Error("Teacher user not found");
+  }
+
+  for (const subjectName of subjects) {
+    await createSubjectIfNotExists(subjectName, teacher.id);
   }
 
   console.log("Seed completed.");

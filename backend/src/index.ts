@@ -5,9 +5,10 @@ import { z } from "zod";
 import { prisma } from "./lib/prisma.js";
 import { supabaseAdmin } from "./lib/supabase-admin.js";
 import { authMiddleware } from "./middlewares/auth.js";
-import { adminRoutes } from "./routes/admin.js";
-import { adminUserRoutes } from "./routes/admin-users.js";
-import { studentRoutes } from "./routes/student.js";
+import { adminRoutes } from "./routes/admin.route.js";
+import { adminUserRoutes } from "./routes/admin-users.route.js";
+import { studentRoutes } from "./routes/student.route.js";
+import { teacherRoutes } from "./routes/teacher.route.js";
 import type { AppEnv } from "./types/hono.js";
 
 const app = new Hono<AppEnv>();
@@ -33,11 +34,15 @@ const registerSchema = z.object({
 
 function cleanOptionalText(value?: string | null) {
   const cleaned = value?.trim();
-  return cleaned ? cleaned : null; 
+
+  return cleaned ? cleaned : null;
 }
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    return error.message;
+  }
+
   return "Terjadi kesalahan pada server";
 }
 
@@ -50,6 +55,16 @@ app.get("/", (c) => {
 
 app.get("/health/db", async (c) => {
   const totalUsers = await prisma.user.count();
+  const totalTeachers = await prisma.user.count({
+    where: {
+      role: "TEACHER",
+    },
+  });
+  const totalStudents = await prisma.user.count({
+    where: {
+      role: "STUDENT",
+    },
+  });
   const totalSubjects = await prisma.subject.count();
   const totalQuestions = await prisma.question.count();
   const totalTryouts = await prisma.tryout.count();
@@ -59,6 +74,8 @@ app.get("/health/db", async (c) => {
     ok: true,
     database: "connected",
     totalUsers,
+    totalTeachers,
+    totalStudents,
     totalSubjects,
     totalQuestions,
     totalTryouts,
@@ -207,6 +224,7 @@ app.get("/me", authMiddleware, async (c) => {
 
 app.route("/admin/users", adminUserRoutes);
 app.route("/admin", adminRoutes);
+app.route("/teacher", teacherRoutes);
 app.route("/student", studentRoutes);
 
 app.notFound((c) => {

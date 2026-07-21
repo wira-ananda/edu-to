@@ -4,7 +4,9 @@ import { prisma } from "../lib/prisma.js";
 import type { AppEnv } from "../types/hono.js";
 
 function getStringMetadata(value: unknown) {
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+  return typeof value === "string" && value.trim() !== ""
+    ? value.trim()
+    : undefined;
 }
 
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
