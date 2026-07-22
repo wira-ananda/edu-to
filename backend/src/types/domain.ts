@@ -10,6 +10,8 @@ export type AnswerOption = "A" | "B" | "C" | "D";
 
 export type TryoutStatus = "DRAFT" | "OPEN" | "CLOSED";
 
+export type EnrollmentStatus = "PENDING" | "APPROVED" | "REJECTED";
+
 export type AppUser = {
   id: string;
   supabaseUserId: string;

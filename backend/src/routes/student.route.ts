@@ -11,6 +11,10 @@ studentRoutes.use("*", authMiddleware, roleMiddleware(["STUDENT"]));
 studentRoutes.get("/check", studentController.check);
 
 studentRoutes.get("/tryouts", studentController.getTryouts);
+studentRoutes.post(
+  "/tryouts/:tryoutId/request-join",
+  studentController.requestJoinTryout,
+);
 studentRoutes.post("/tryouts/start", studentController.startTryout);
 
 studentRoutes.get("/sessions", studentController.getSessions);

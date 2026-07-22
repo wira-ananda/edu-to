@@ -20,6 +20,22 @@
     return "Berlangsung";
   }
 
+  function getOwnerLabel(session: StudentSessionsResponse["sessions"][number]) {
+    if (!session.tryout.owner) {
+      return "Admin / Guru";
+    }
+
+    if (session.tryout.owner.role === "ADMIN") {
+      return `Admin: ${session.tryout.owner.name}`;
+    }
+
+    if (session.tryout.owner.role === "TEACHER") {
+      return `Guru: ${session.tryout.owner.name}`;
+    }
+
+    return session.tryout.owner.name;
+  }
+
   async function loadHistory(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
 
@@ -116,12 +132,13 @@
       class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
       <div class="overflow-x-auto">
-        <table class="w-full min-w-[980px] text-left text-sm">
+        <table class="w-full min-w-[1040px] text-left text-sm">
           <thead
             class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
           >
             <tr>
               <th class="px-5 py-4">Tryout</th>
+              <th class="px-5 py-4">Pemilik</th>
               <th class="px-5 py-4">Percobaan</th>
               <th class="px-5 py-4">Status</th>
               <th class="px-5 py-4">Progress</th>
@@ -147,6 +164,10 @@
                   <p class="text-xs text-slate-400">
                     {new Date(session.startedAt).toLocaleString("id-ID")}
                   </p>
+                </td>
+
+                <td class="px-5 py-4 text-xs font-semibold text-slate-600">
+                  {getOwnerLabel(session)}
                 </td>
 
                 <td class="px-5 py-4 font-bold text-slate-900">

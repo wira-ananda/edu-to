@@ -6,6 +6,8 @@ import {
 import adminService, { AdminServiceError } from "../service/admin.service.js";
 import {
   adminAnalyzeQuestionSchema,
+  adminEnrollmentParamSchema,
+  adminEnrollStudentSchema,
   adminQuestionSchema,
   adminSubjectSchema,
   adminTryoutSchema,
@@ -203,6 +205,7 @@ async function getSubjects(c: AdminContext) {
 
 async function createSubject(c: AdminContext) {
   try {
+    const user = c.get("user");
     const body = await c.req.json().catch(() => null);
 
     const parsed = adminSubjectSchema.safeParse(body);
@@ -217,7 +220,7 @@ async function createSubject(c: AdminContext) {
       );
     }
 
-    const result = await adminService.createSubject(parsed.data);
+    const result = await adminService.createSubject(user.id, parsed.data);
 
     return c.json({
       ok: true,
@@ -555,6 +558,121 @@ async function deleteTryout(c: AdminContext) {
   }
 }
 
+async function getTryoutParticipants(c: AdminContext) {
+  try {
+    const id = getRequiredParam(c, "id");
+
+    const result = await adminService.getTryoutParticipants(id);
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal memuat daftar peserta tryout.");
+  }
+}
+
+async function enrollStudent(c: AdminContext) {
+  try {
+    const id = getRequiredParam(c, "id");
+    const studentId = getRequiredParam(c, "studentId");
+
+    const parsed = adminEnrollStudentSchema.safeParse({
+      tryoutId: id,
+      studentId,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await adminService.enrollStudent(
+      parsed.data.tryoutId,
+      parsed.data.studentId,
+    );
+
+    return c.json(
+      {
+        ok: true,
+        message: result.message,
+        enrollment: result.enrollment,
+      },
+      result.created ? 201 : 200,
+    );
+  } catch (error) {
+    return handleError(c, error, "Gagal memasukkan siswa ke tryout.");
+  }
+}
+
+async function approveEnrollment(c: AdminContext) {
+  try {
+    const id = getRequiredParam(c, "id");
+
+    const parsed = adminEnrollmentParamSchema.safeParse({
+      enrollmentId: id,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await adminService.approveEnrollment(
+      parsed.data.enrollmentId,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal menyetujui peserta.");
+  }
+}
+
+async function rejectEnrollment(c: AdminContext) {
+  try {
+    const id = getRequiredParam(c, "id");
+
+    const parsed = adminEnrollmentParamSchema.safeParse({
+      enrollmentId: id,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await adminService.rejectEnrollment(
+      parsed.data.enrollmentId,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal menolak peserta.");
+  }
+}
+
 async function getTryoutResults(c: AdminContext) {
   try {
     const id = getRequiredParam(c, "id");
@@ -605,6 +723,11 @@ export default {
   updateTryout,
   updateTryoutStatus,
   deleteTryout,
+
+  getTryoutParticipants,
+  enrollStudent,
+  approveEnrollment,
+  rejectEnrollment,
 
   getTryoutResults,
   getTryoutStatistics,

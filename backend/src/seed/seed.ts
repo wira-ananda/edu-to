@@ -1,6 +1,7 @@
 import "../lib/env.js";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "../lib/prisma.js";
+import type { AppRole } from "../types/domain.js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,42 +26,68 @@ type SeedUser = {
   email: string;
   password: string;
   name: string;
-  role: "ADMIN" | "TEACHER" | "STUDENT";
-  school?: string;
-  className?: string;
+  role: AppRole;
+  school?: string | null;
+  className?: string | null;
 };
 
 const users: SeedUser[] = [
   {
     email: "admin@test.com",
     password: "password123",
-    name: "Admin EduTryout",
+    name: "Nadia Prameswari",
     role: "ADMIN",
-    school: "SMAN 1 Gowa",
+    school: "EduTryout Indonesia",
+    className: null,
   },
   {
     email: "teacher@test.com",
     password: "password123",
-    name: "Teacher EduTryout",
+    name: "Raka Mahendra",
     role: "TEACHER",
     school: "SMAN 1 Gowa",
+    className: null,
   },
   {
     email: "student@test.com",
     password: "password123",
-    name: "Siswa Test",
+    name: "Alya Putri Ramadhani",
     role: "STUDENT",
     school: "SMAN 1 Gowa",
-    className: "XII IPA 1",
+    className: "X IPA 1",
   },
-];
-
-const subjects = [
-  "Biologi",
-  "Matematika",
-  "Fisika",
-  "Kimia",
-  "Bahasa Indonesia",
+  {
+    email: "student2@test.com",
+    password: "password123",
+    name: "Bima Satriatama",
+    role: "STUDENT",
+    school: "SMAN 1 Gowa",
+    className: "X IPA 2",
+  },
+  {
+    email: "student3@test.com",
+    password: "password123",
+    name: "Citra Nabila Azzahra",
+    role: "STUDENT",
+    school: "SMAN 1 Gowa",
+    className: "X IPS 1",
+  },
+  {
+    email: "student4@test.com",
+    password: "password123",
+    name: "Dimas Aditya Pratama",
+    role: "STUDENT",
+    school: "SMAN 1 Gowa",
+    className: "X IPA 3",
+  },
+  {
+    email: "student5@test.com",
+    password: "password123",
+    name: "Eka Safira Lestari",
+    role: "STUDENT",
+    school: "SMAN 1 Gowa",
+    className: "X IPS 2",
+  },
 ];
 
 async function findSupabaseUserByEmail(email: string) {
@@ -76,11 +103,28 @@ async function findSupabaseUserByEmail(email: string) {
   return data.users.find((user) => user.email === email) ?? null;
 }
 
-async function createOrGetSupabaseUser(seedUser: SeedUser) {
+async function createOrUpdateSupabaseUser(seedUser: SeedUser) {
   const existingUser = await findSupabaseUserByEmail(seedUser.email);
 
   if (existingUser) {
-    return existingUser;
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
+      existingUser.id,
+      {
+        password: seedUser.password,
+        user_metadata: {
+          name: seedUser.name,
+          role: seedUser.role,
+          school: seedUser.school ?? null,
+          className: seedUser.className ?? null,
+        },
+      },
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return data.user ?? existingUser;
   }
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
@@ -90,8 +134,8 @@ async function createOrGetSupabaseUser(seedUser: SeedUser) {
     user_metadata: {
       name: seedUser.name,
       role: seedUser.role,
-      school: seedUser.school,
-      className: seedUser.className,
+      school: seedUser.school ?? null,
+      className: seedUser.className ?? null,
     },
   });
 
@@ -107,75 +151,55 @@ async function createOrGetSupabaseUser(seedUser: SeedUser) {
 }
 
 async function createOrUpdateAppUser(seedUser: SeedUser) {
-  const supabaseUser = await createOrGetSupabaseUser(seedUser);
+  const supabaseUser = await createOrUpdateSupabaseUser(seedUser);
 
-  const user = await prisma.user.upsert({
-    where: {
-      supabaseUserId: supabaseUser.id,
-    },
-    update: {
-      name: seedUser.name,
-      email: seedUser.email,
-      role: seedUser.role,
-      school: seedUser.school,
-      className: seedUser.className,
-    },
-    create: {
-      supabaseUserId: supabaseUser.id,
-      name: seedUser.name,
-      email: seedUser.email,
-      role: seedUser.role,
-      school: seedUser.school,
-      className: seedUser.className,
-    },
-  });
+  const existingUser =
+    (await prisma.user.findUnique({
+      where: {
+        supabaseUserId: supabaseUser.id,
+      },
+    })) ??
+    (await prisma.user.findUnique({
+      where: {
+        email: seedUser.email,
+      },
+    }));
 
-  console.log(`Seeded ${seedUser.role}: ${seedUser.email}`);
+  const user = existingUser
+    ? await prisma.user.update({
+        where: {
+          id: existingUser.id,
+        },
+        data: {
+          supabaseUserId: supabaseUser.id,
+          name: seedUser.name,
+          email: seedUser.email,
+          role: seedUser.role,
+          school: seedUser.school ?? null,
+          className: seedUser.className ?? null,
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          supabaseUserId: supabaseUser.id,
+          name: seedUser.name,
+          email: seedUser.email,
+          role: seedUser.role,
+          school: seedUser.school ?? null,
+          className: seedUser.className ?? null,
+        },
+      });
+
+  console.log(`Seeded ${seedUser.role}: ${seedUser.name} <${seedUser.email}>`);
 
   return user;
 }
 
-async function createSubjectIfNotExists(name: string, ownerId: string | null) {
-  const existingSubject = await prisma.subject.findFirst({
-    where: {
-      name,
-      ownerId,
-    },
-  });
-
-  if (existingSubject) {
-    console.log(`Subject already exists: ${name}`);
-    return existingSubject;
-  }
-
-  const subject = await prisma.subject.create({
-    data: {
-      name,
-      ownerId,
-    },
-  });
-
-  console.log(`Seeded subject: ${name}`);
-
-  return subject;
-}
-
 async function main() {
-  const appUsers = await Promise.all(
-    users.map((seedUser) => createOrUpdateAppUser(seedUser)),
-  );
+  await Promise.all(users.map((seedUser) => createOrUpdateAppUser(seedUser)));
 
-  const teacher = appUsers.find((user) => user.role === "TEACHER");
-
-  if (!teacher) {
-    throw new Error("Teacher user not found");
-  }
-
-  for (const subjectName of subjects) {
-    await createSubjectIfNotExists(subjectName, teacher.id);
-  }
-
-  console.log("Seed completed.");
+  console.log("Seed users completed.");
+  console.log("Subjects are handled by seed-questions.ts.");
 }
 
 main()

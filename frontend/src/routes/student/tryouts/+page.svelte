@@ -9,16 +9,43 @@
     readStudentTryoutsCache,
   } from "$lib/cache/student-page-cache";
   import type {
+    RequestJoinTryoutResponse,
     StartTryoutResponse,
     StudentTryoutItem,
   } from "$lib/types/student";
-  import { getMaxAttemptsLabel } from "$lib/types/admin";
+  import {
+    getEnrollmentStatusBadgeClass,
+    getEnrollmentStatusLabel,
+    getMaxAttemptsLabel,
+  } from "$lib/types/admin";
 
   let loading = $state(true);
   let refreshing = $state(false);
   let startingTryoutId = $state("");
+  let requestingJoinTryoutId = $state("");
   let errorMessage = $state("");
+  let successMessage = $state("");
   let tryouts = $state<StudentTryoutItem[]>([]);
+
+  function isValidEnrollmentCache(cachedTryouts: StudentTryoutItem[]) {
+    return cachedTryouts.every((tryout) => "enrollmentStatus" in tryout);
+  }
+
+  function getOwnerLabel(tryout: StudentTryoutItem) {
+    if (!tryout.owner) {
+      return "Admin / Guru";
+    }
+
+    if (tryout.owner.role === "ADMIN") {
+      return `Admin: ${tryout.owner.name}`;
+    }
+
+    if (tryout.owner.role === "TEACHER") {
+      return `Guru: ${tryout.owner.name}`;
+    }
+
+    return tryout.owner.name;
+  }
 
   function getAttemptsRemainingLabel(tryout: StudentTryoutItem) {
     if (tryout.maxAttempts === null) {
@@ -28,9 +55,37 @@
     return `${tryout.attemptsRemaining ?? 0} tersisa`;
   }
 
+  function getEnrollmentDescription(tryout: StudentTryoutItem) {
+    if (tryout.enrollmentStatus === "APPROVED") {
+      return "Kamu sudah terdaftar dan bisa mengerjakan tryout ini.";
+    }
+
+    if (tryout.enrollmentStatus === "PENDING") {
+      return "Permintaanmu sedang menunggu persetujuan admin atau guru.";
+    }
+
+    if (tryout.enrollmentStatus === "REJECTED") {
+      return "Permintaanmu ditolak. Hubungi guru atau admin jika perlu.";
+    }
+
+    return "Kamu perlu meminta akses sebelum bisa mengerjakan tryout ini.";
+  }
+
   function getStartDisabledReason(tryout: StudentTryoutItem) {
     if (tryout.bank.totalAvailableQuestions < tryout.totalQuestions) {
       return "Soal tersedia tidak cukup untuk tryout ini.";
+    }
+
+    if (tryout.enrollmentStatus !== "APPROVED") {
+      if (tryout.enrollmentStatus === "PENDING") {
+        return "Permintaan bergabung masih menunggu persetujuan.";
+      }
+
+      if (tryout.enrollmentStatus === "REJECTED") {
+        return "Permintaan bergabung sudah ditolak.";
+      }
+
+      return "Kamu harus meminta akses terlebih dahulu.";
     }
 
     if (tryout.ongoingSessionId) {
@@ -44,6 +99,26 @@
     return "";
   }
 
+  function getActionLabel(tryout: StudentTryoutItem) {
+    if (tryout.canRequestJoin) {
+      return "Minta Bergabung";
+    }
+
+    if (tryout.enrollmentStatus === "PENDING") {
+      return "Menunggu Persetujuan";
+    }
+
+    if (tryout.enrollmentStatus === "REJECTED") {
+      return "Akses Ditolak";
+    }
+
+    if (tryout.ongoingSessionId) {
+      return "Lanjutkan Tryout";
+    }
+
+    return "Mulai Tryout";
+  }
+
   async function loadTryouts(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
 
@@ -51,7 +126,7 @@
 
     const cachedTryouts = !force ? readStudentTryoutsCache() : null;
 
-    if (cachedTryouts) {
+    if (cachedTryouts && isValidEnrollmentCache(cachedTryouts)) {
       tryouts = cachedTryouts;
       loading = false;
       return;
@@ -60,7 +135,7 @@
     loading = tryouts.length === 0;
 
     try {
-      tryouts = await getStudentTryoutsCached({ force });
+      tryouts = await getStudentTryoutsCached({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat daftar tryout.";
@@ -80,7 +155,39 @@
     }
   }
 
+  async function requestJoinTryout(tryout: StudentTryoutItem) {
+    requestingJoinTryoutId = tryout.id;
+    errorMessage = "";
+    successMessage = "";
+
+    try {
+      const result = await apiFetch<RequestJoinTryoutResponse>(
+        `/student/tryouts/${tryout.id}/request-join`,
+        {
+          method: "POST",
+        },
+      );
+
+      successMessage = result.message;
+      invalidateStudentTryoutsCache();
+
+      await loadTryouts({ force: true });
+    } catch (error) {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Gagal mengirim permintaan bergabung.";
+    } finally {
+      requestingJoinTryoutId = "";
+    }
+  }
+
   async function startTryout(tryout: StudentTryoutItem) {
+    if (tryout.canRequestJoin) {
+      await requestJoinTryout(tryout);
+      return;
+    }
+
     if (tryout.ongoingSessionId) {
       await goto(`/student/tryouts/${tryout.ongoingSessionId}`);
       return;
@@ -88,6 +195,7 @@
 
     startingTryoutId = tryout.id;
     errorMessage = "";
+    successMessage = "";
 
     try {
       const result = await apiFetch<StartTryoutResponse>(
@@ -125,7 +233,8 @@
       <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Pilih paket tryout yang sudah dibuka oleh admin atau guru.
+        Pilih paket tryout yang sudah dibuka oleh admin atau guru. Kamu perlu
+        mendapat persetujuan sebelum bisa mengerjakan.
       </p>
     </div>
 
@@ -144,6 +253,14 @@
       class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
       {errorMessage}
+    </p>
+  {/if}
+
+  {#if successMessage}
+    <p
+      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    >
+      {successMessage}
     </p>
   {/if}
 
@@ -191,9 +308,43 @@
             </span>
           </div>
 
-          <p class="mt-2 text-sm text-slate-500">
-            Bank soal: {tryout.bank.name}
-          </p>
+          <div class="mt-3 space-y-1">
+            <p class="text-sm text-slate-500">
+              Bank soal:
+              <span class="font-semibold text-slate-700">
+                {tryout.bank.name}
+              </span>
+            </p>
+
+            <p class="text-sm text-slate-500">
+              Dibuat oleh:
+              <span class="font-semibold text-slate-700">
+                {getOwnerLabel(tryout)}
+              </span>
+            </p>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
+              >
+                Status Peserta
+              </p>
+
+              <span
+                class={`rounded-full px-3 py-1 text-xs font-bold ${getEnrollmentStatusBadgeClass(
+                  tryout.enrollmentStatus,
+                )}`}
+              >
+                {getEnrollmentStatusLabel(tryout.enrollmentStatus)}
+              </span>
+            </div>
+
+            <p class="mt-2 text-xs font-semibold text-slate-600">
+              {getEnrollmentDescription(tryout)}
+            </p>
+          </div>
 
           <div class="mt-5 grid grid-cols-2 gap-3">
             <div class="rounded-xl bg-slate-50 p-4">
@@ -261,7 +412,7 @@
               <p class="mt-1 text-xs font-semibold text-amber-700">
                 Ada sesi yang sedang berjalan. Kamu bisa melanjutkannya.
               </p>
-            {:else if !tryout.canStart}
+            {:else if tryout.enrollmentStatus === "APPROVED" && !tryout.canStart}
               <p class="mt-1 text-xs font-semibold text-red-600">
                 Kamu sudah mencapai batas percobaan.
               </p>
@@ -273,7 +424,7 @@
             menggunakan Weighted Random Selection.
           </p>
 
-          {#if disabledReason}
+          {#if disabledReason && !tryout.canRequestJoin}
             <p
               class="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600"
             >
@@ -283,16 +434,18 @@
 
           <button
             type="button"
-            disabled={Boolean(disabledReason) || startingTryoutId === tryout.id}
+            disabled={(Boolean(disabledReason) && !tryout.canRequestJoin) ||
+              startingTryoutId === tryout.id ||
+              requestingJoinTryoutId === tryout.id}
             onclick={() => startTryout(tryout)}
             class="mt-5 w-full rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {#if startingTryoutId === tryout.id}
               Memulai...
-            {:else if tryout.ongoingSessionId}
-              Lanjutkan Tryout
+            {:else if requestingJoinTryoutId === tryout.id}
+              Mengirim...
             {:else}
-              Mulai Tryout
+              {getActionLabel(tryout)}
             {/if}
           </button>
         </article>

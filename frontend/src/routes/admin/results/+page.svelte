@@ -1,13 +1,12 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import type {
-    TeacherTryoutResultsResponse,
-    TeacherTryoutsResponse,
-    TeacherTryoutStatisticsResponse,
-  } from "$lib/types/teacher";
+    AdminTryoutsResponse,
+    TryoutResultsResponse,
+    TryoutStatisticsResponse,
+  } from "$lib/types/admin";
   import {
     getMaxAttemptsLabel,
     getTryoutStatusBadgeClass,
@@ -18,10 +17,10 @@
   let loadingResults = $state(false);
   let errorMessage = $state("");
 
-  let tryouts = $state<TeacherTryoutsResponse["tryouts"]>([]);
+  let tryouts = $state<AdminTryoutsResponse["tryouts"]>([]);
   let selectedTryoutId = $state("");
-  let sessions = $state<TeacherTryoutResultsResponse["sessions"]>([]);
-  let statistics = $state<TeacherTryoutStatisticsResponse | null>(null);
+  let sessions = $state<TryoutResultsResponse["sessions"]>([]);
+  let statistics = $state<TryoutStatisticsResponse | null>(null);
 
   const selectedTryout = $derived(
     tryouts.find((tryout) => tryout.id === selectedTryoutId) ?? null,
@@ -47,8 +46,24 @@
     return "bg-slate-100 text-slate-700";
   }
 
+  function getOwnerLabel(tryout: AdminTryoutsResponse["tryouts"][number]) {
+    if (!tryout.owner) {
+      return "Tanpa owner";
+    }
+
+    if (tryout.owner.role === "ADMIN") {
+      return `Admin: ${tryout.owner.name}`;
+    }
+
+    if (tryout.owner.role === "TEACHER") {
+      return `Guru: ${tryout.owner.name}`;
+    }
+
+    return tryout.owner.name;
+  }
+
   async function loadTryouts() {
-    const result = await apiFetch<TeacherTryoutsResponse>("/teacher/tryouts");
+    const result = await apiFetch<AdminTryoutsResponse>("/admin/tryouts");
 
     tryouts = result.tryouts;
 
@@ -72,11 +87,11 @@
 
     try {
       const [resultsResult, statisticsResult] = await Promise.all([
-        apiFetch<TeacherTryoutResultsResponse>(
-          `/teacher/tryouts/${selectedTryoutId}/results`,
+        apiFetch<TryoutResultsResponse>(
+          `/admin/tryouts/${selectedTryoutId}/results`,
         ),
-        apiFetch<TeacherTryoutStatisticsResponse>(
-          `/teacher/tryouts/${selectedTryoutId}/statistics`,
+        apiFetch<TryoutStatisticsResponse>(
+          `/admin/tryouts/${selectedTryoutId}/statistics`,
         ),
       ]);
 
@@ -123,10 +138,10 @@
     class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Hasil Siswa</h2>
+      <h2 class="text-2xl font-bold text-slate-950">Hasil Tryout</h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Lihat hasil pengerjaan siswa pada tryout milikmu.
+        Lihat hasil pengerjaan siswa dari tryout admin dan guru.
       </p>
     </div>
 
@@ -150,7 +165,7 @@
 
   {#if loading}
     <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-500">Memuat hasil siswa...</p>
+      <p class="text-sm font-semibold text-slate-500">Memuat hasil tryout...</p>
     </div>
   {:else if tryouts.length === 0}
     <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -183,6 +198,10 @@
       {#if selectedTryout}
         <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
           <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+            {getOwnerLabel(selectedTryout)}
+          </span>
+
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
             {selectedTryout.totalQuestions} soal
           </span>
 
@@ -210,15 +229,6 @@
             Pending: {selectedTryout.pendingRequests}
           </span>
         </div>
-
-        <button
-          type="button"
-          onclick={() =>
-            goto(`/teacher/tryouts/${selectedTryout.id}/participants`)}
-          class="mt-4 rounded-xl border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700"
-        >
-          Kelola Peserta
-        </button>
       {/if}
     </div>
 

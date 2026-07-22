@@ -6,7 +6,11 @@ import {
   updateLevelAfterAnswer,
 } from "../lib/tryout-level.js";
 import { getTryoutQuestionWhere } from "../lib/access-control.js";
-import type { AnswerOption, DifficultyLevel } from "../types/domain.js";
+import type {
+  AnswerOption,
+  DifficultyLevel,
+  EnrollmentStatus,
+} from "../types/domain.js";
 import type {
   AnswerQuestionInput,
   StartTryoutInput,
@@ -40,6 +44,23 @@ const answerQuestionSelect = {
   ...studentQuestionSelect,
   correctAnswer: true,
 } as const satisfies Prisma.QuestionSelect;
+
+const tryoutOwnerSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+} as const satisfies Prisma.UserSelect;
+
+const enrollmentSelect = {
+  id: true,
+  status: true,
+  requestedAt: true,
+  approvedAt: true,
+  rejectedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const satisfies Prisma.TryoutEnrollmentSelect;
 
 const sessionWithTryoutInclude = {
   tryout: {
@@ -108,6 +129,10 @@ type ResultSessionRecord = Prisma.TryoutSessionGetPayload<{
   include: typeof resultSessionInclude;
 }>;
 
+type StudentEnrollmentPayload = Prisma.TryoutEnrollmentGetPayload<{
+  select: typeof enrollmentSelect;
+}>;
+
 function calculateScore(correctCount: number, totalQuestions: number) {
   if (totalQuestions <= 0) {
     return 0;
@@ -127,6 +152,22 @@ function toStudentQuestion(question: StudentQuestionCandidate) {
     imageUrl: question.imageUrl,
     imageAltText: question.imageAltText,
     difficultyLevel: question.difficultyLevel,
+  };
+}
+
+function toEnrollmentPayload(enrollment: StudentEnrollmentPayload | null) {
+  if (!enrollment) {
+    return null;
+  }
+
+  return {
+    id: enrollment.id,
+    status: enrollment.status as EnrollmentStatus,
+    requestedAt: enrollment.requestedAt,
+    approvedAt: enrollment.approvedAt,
+    rejectedAt: enrollment.rejectedAt,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
   };
 }
 
@@ -165,6 +206,33 @@ function getQuestionWhereForSession(session: SessionWithTryout) {
     subjectId: session.tryout.subjectId,
     ownerId: session.tryout.ownerId,
   });
+}
+
+async function assertApprovedEnrollment(userId: string, tryoutId: string) {
+  const enrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      tryoutId_studentId: {
+        tryoutId,
+        studentId: userId,
+      },
+    },
+  });
+
+  if (!enrollment) {
+    throw new StudentServiceError(
+      "Kamu belum terdaftar sebagai peserta tryout ini.",
+      403,
+    );
+  }
+
+  if (enrollment.status !== "APPROVED") {
+    throw new StudentServiceError(
+      "Kamu belum disetujui sebagai peserta tryout ini.",
+      403,
+    );
+  }
+
+  return enrollment;
 }
 
 async function finishSessionByTimeout(sessionId: string, userId: string) {
@@ -392,13 +460,20 @@ async function getTryouts(userId: string) {
     },
     include: {
       subject: {
-        include: {
-          _count: {
-            select: {
-              questions: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
         },
+      },
+      owner: {
+        select: tryoutOwnerSelect,
+      },
+      enrollments: {
+        where: {
+          studentId: userId,
+        },
+        select: enrollmentSelect,
+        take: 1,
       },
       sessions: {
         where: {
@@ -421,21 +496,39 @@ async function getTryouts(userId: string) {
     },
   });
 
-  return {
-    tryouts: tryouts.map((tryout) => {
+  const mappedTryouts = await Promise.all(
+    tryouts.map(async (tryout) => {
       const attemptsUsed = tryout.sessions.length;
 
       const ongoingSession =
-        tryout.sessions.find((session) => session.status === "ONGOING") ?? null;
+        tryout.sessions.find(
+          (session) =>
+            session.status === "ONGOING" &&
+            !isExpired(session.startedAt, tryout.durationMinutes),
+        ) ?? null;
 
       const attemptsRemaining =
         tryout.maxAttempts === null
           ? null
           : Math.max(0, tryout.maxAttempts - attemptsUsed);
 
-      const canStart =
-        !ongoingSession &&
-        (tryout.maxAttempts === null || attemptsUsed < tryout.maxAttempts);
+      const enrollment = tryout.enrollments[0] ?? null;
+      const enrollmentStatus = enrollment?.status ?? null;
+      const isApproved = enrollmentStatus === "APPROVED";
+
+      const totalAvailableQuestions = await prisma.question.count({
+        where: getTryoutQuestionWhere({
+          subjectId: tryout.subjectId,
+          ownerId: tryout.ownerId,
+        }),
+      });
+
+      const attemptLimitAvailable =
+        tryout.maxAttempts === null || attemptsUsed < tryout.maxAttempts;
+
+      const canStart = isApproved && !ongoingSession && attemptLimitAvailable;
+      const canContinue = isApproved && Boolean(ongoingSession);
+      const canRequestJoin = !enrollment;
 
       return {
         id: tryout.id,
@@ -447,16 +540,125 @@ async function getTryouts(userId: string) {
         attemptsUsed,
         attemptsRemaining,
         canStart,
+        canContinue,
+        canRequestJoin,
         ongoingSessionId: ongoingSession?.id ?? null,
+        enrollmentStatus,
+        enrollment: toEnrollmentPayload(enrollment),
         createdAt: tryout.createdAt,
         updatedAt: tryout.updatedAt,
+        owner: tryout.owner
+          ? {
+              id: tryout.owner.id,
+              name: tryout.owner.name,
+              email: tryout.owner.email,
+              role: tryout.owner.role,
+            }
+          : null,
         bank: {
           id: tryout.subject.id,
           name: tryout.subject.name,
-          totalAvailableQuestions: tryout.subject._count.questions,
+          totalAvailableQuestions,
         },
       };
     }),
+  );
+
+  return {
+    tryouts: mappedTryouts,
+  };
+}
+
+async function requestJoinTryout(userId: string, tryoutId: string) {
+  const tryout = await prisma.tryout.findUnique({
+    where: {
+      id: tryoutId,
+    },
+    include: {
+      owner: {
+        select: tryoutOwnerSelect,
+      },
+      subject: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!tryout) {
+    throw new StudentServiceError("Tryout tidak ditemukan", 404);
+  }
+
+  if (tryout.status !== "OPEN") {
+    throw new StudentServiceError(
+      "Tryout ini belum dibuka atau sudah ditutup.",
+      400,
+    );
+  }
+
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      tryoutId_studentId: {
+        tryoutId: tryout.id,
+        studentId: userId,
+      },
+    },
+    select: enrollmentSelect,
+  });
+
+  if (existingEnrollment?.status === "APPROVED") {
+    return {
+      message: "Kamu sudah terdaftar sebagai peserta tryout ini.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+      tryout: {
+        id: tryout.id,
+        title: tryout.title,
+        owner: tryout.owner,
+        bank: tryout.subject,
+      },
+    };
+  }
+
+  if (existingEnrollment?.status === "PENDING") {
+    return {
+      message: "Permintaan gabung tryout ini masih menunggu persetujuan.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+      tryout: {
+        id: tryout.id,
+        title: tryout.title,
+        owner: tryout.owner,
+        bank: tryout.subject,
+      },
+    };
+  }
+
+  if (existingEnrollment?.status === "REJECTED") {
+    throw new StudentServiceError(
+      "Permintaan gabung tryout ini sudah ditolak.",
+      409,
+    );
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.create({
+    data: {
+      tryoutId: tryout.id,
+      studentId: userId,
+      status: "PENDING",
+    },
+    select: enrollmentSelect,
+  });
+
+  return {
+    message: "Permintaan gabung tryout berhasil dikirim.",
+    enrollment: toEnrollmentPayload(enrollment),
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      owner: tryout.owner,
+      bank: tryout.subject,
+    },
   };
 }
 
@@ -480,6 +682,8 @@ async function startTryout(userId: string, input: StartTryoutInput) {
       400,
     );
   }
+
+  await assertApprovedEnrollment(userId, tryout.id);
 
   const existingSessions = await prisma.tryoutSession.findMany({
     where: {
@@ -618,6 +822,9 @@ async function getSessions(userId: string) {
       tryout: {
         include: {
           subject: true,
+          owner: {
+            select: tryoutOwnerSelect,
+          },
         },
       },
       _count: {
@@ -1029,6 +1236,7 @@ async function getSessionResult(userId: string, sessionId: string) {
 
 export default {
   getTryouts,
+  requestJoinTryout,
   startTryout,
   getSessions,
   getNextQuestion,

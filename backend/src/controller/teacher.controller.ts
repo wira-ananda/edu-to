@@ -3,10 +3,14 @@ import {
   isQuestionImageFile,
   type QuestionImageFile,
 } from "../lib/question-image-storage.js";
-import teacherService, { TeacherServiceError } from "../service/teacher.service.js";
+import teacherService, {
+  TeacherServiceError,
+} from "../service/teacher.service.js";
 import {
   difficultyLevels,
   teacherAnalyzeQuestionSchema,
+  teacherEnrollmentParamSchema,
+  teacherEnrollStudentSchema,
   teacherQuestionSchema,
   teacherSubjectSchema,
   teacherTryoutSchema,
@@ -570,6 +574,128 @@ async function deleteTryout(c: TeacherContext) {
   }
 }
 
+async function getTryoutParticipants(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const result = await teacherService.getTryoutParticipants(user.id, id);
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal memuat daftar peserta tryout.");
+  }
+}
+
+async function enrollStudent(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+    const studentId = getRequiredParam(c, "studentId");
+
+    const parsed = teacherEnrollStudentSchema.safeParse({
+      tryoutId: id,
+      studentId,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await teacherService.enrollStudent(
+      user.id,
+      parsed.data.tryoutId,
+      parsed.data.studentId,
+    );
+
+    return c.json(
+      {
+        ok: true,
+        message: result.message,
+        enrollment: result.enrollment,
+      },
+      result.created ? 201 : 200,
+    );
+  } catch (error) {
+    return handleError(c, error, "Gagal memasukkan siswa ke tryout.");
+  }
+}
+
+async function approveEnrollment(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const parsed = teacherEnrollmentParamSchema.safeParse({
+      enrollmentId: id,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await teacherService.approveEnrollment(
+      user.id,
+      parsed.data.enrollmentId,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal menyetujui peserta.");
+  }
+}
+
+async function rejectEnrollment(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const parsed = teacherEnrollmentParamSchema.safeParse({
+      enrollmentId: id,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await teacherService.rejectEnrollment(
+      user.id,
+      parsed.data.enrollmentId,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal menolak peserta.");
+  }
+}
+
 async function getTryoutResults(c: TeacherContext) {
   try {
     const user = c.get("user");
@@ -622,6 +748,11 @@ export default {
   updateTryout,
   updateTryoutStatus,
   deleteTryout,
+
+  getTryoutParticipants,
+  enrollStudent,
+  approveEnrollment,
+  rejectEnrollment,
 
   getTryoutResults,
   getTryoutStatistics,

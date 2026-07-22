@@ -4,6 +4,7 @@ import studentService, {
 } from "../service/student.service.js";
 import {
   answerQuestionSchema,
+  requestJoinTryoutSchema,
   startTryoutSchema,
 } from "../schema/student.schema.js";
 import type { AppEnv } from "../types/hono.js";
@@ -76,6 +77,39 @@ async function getTryouts(c: StudentContext) {
     });
   } catch (error) {
     return handleError(c, error, "Gagal memuat tryout.");
+  }
+}
+
+async function requestJoinTryout(c: StudentContext) {
+  try {
+    const user = c.get("user");
+    const tryoutId = getRequiredParam(c, "tryoutId");
+
+    const parsed = requestJoinTryoutSchema.safeParse({
+      tryoutId,
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await studentService.requestJoinTryout(
+      user.id,
+      parsed.data.tryoutId,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal mengirim permintaan gabung tryout.");
   }
 }
 
@@ -211,6 +245,7 @@ async function getSessionResult(c: StudentContext) {
 export default {
   check,
   getTryouts,
+  requestJoinTryout,
   startTryout,
   getSessions,
   getNextQuestion,

@@ -1,17 +1,40 @@
-import type { AnswerOption, DifficultyLevel } from "$lib/types/questions";
-import type { TryoutStatus } from "$lib/types/admin";
+import type {
+  AnswerOption,
+  DifficultyLevel,
+  OwnerSummary,
+} from "$lib/types/questions";
+import type { EnrollmentStatus, TryoutStatus } from "$lib/types/admin";
+
+export type StudentEnrollmentSummary = {
+  id: string;
+  status: EnrollmentStatus;
+  requestedAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type StudentTryoutItem = {
   id: string;
+  subjectId?: string;
+  ownerId: string | null;
+  owner: OwnerSummary | null;
+
   title: string;
   totalQuestions: number;
   durationMinutes: number;
   maxAttempts: number | null;
   status: TryoutStatus;
 
+  enrollmentStatus: EnrollmentStatus | null;
+  enrollment: StudentEnrollmentSummary | null;
+
   attemptsUsed: number;
   attemptsRemaining: number | null;
   canStart: boolean;
+  canContinue: boolean;
+  canRequestJoin: boolean;
   ongoingSessionId: string | null;
 
   createdAt: string;
@@ -27,6 +50,12 @@ export type StudentTryoutItem = {
 export type StudentTryoutsResponse = {
   ok: boolean;
   tryouts: StudentTryoutItem[];
+};
+
+export type RequestJoinTryoutResponse = {
+  ok: boolean;
+  message: string;
+  enrollment: StudentEnrollmentSummary;
 };
 
 export type StudentSession = {
@@ -45,6 +74,7 @@ export type StudentSession = {
     id: string;
     title: string;
     durationMinutes: number;
+    owner?: OwnerSummary | null;
     subject: {
       id: string;
       name: string;

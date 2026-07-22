@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { DifficultyLevel, WeightPriority } from "../types/domain.js";
+import type {
+  DifficultyLevel,
+  EnrollmentStatus,
+  WeightPriority,
+} from "../types/domain.js";
 
 export const difficultyLevels: DifficultyLevel[] = ["LOW", "MEDIUM", "HIGH"];
 
@@ -11,6 +15,12 @@ export const weightPriorities: WeightPriority[] = [
 ];
 
 export const tryoutStatuses = ["DRAFT", "OPEN", "CLOSED"] as const;
+
+export const enrollmentStatuses: EnrollmentStatus[] = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+];
 
 const maxAttemptsSchema = z.preprocess((value) => {
   if (value === undefined) return 1;
@@ -93,6 +103,19 @@ export const adminAnalyzeQuestionSchema = z.object({
     .default("NORMAL"),
 });
 
+export const adminEnrollStudentSchema = z.object({
+  tryoutId: z.string().trim().min(1, "Tryout wajib dikirim"),
+  studentId: z.string().trim().min(1, "Siswa wajib dikirim"),
+});
+
+export const adminEnrollmentParamSchema = z.object({
+  enrollmentId: z.string().trim().min(1, "Data peserta wajib dikirim"),
+});
+
+export const adminEnrollmentStatusSchema = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
+});
+
 export type AdminSubjectInput = z.infer<typeof adminSubjectSchema>;
 
 export type AdminTryoutInput = z.infer<typeof adminTryoutSchema>;
@@ -103,4 +126,14 @@ export type AdminQuestionInput = z.infer<typeof adminQuestionSchema>;
 
 export type AdminAnalyzeQuestionInput = z.infer<
   typeof adminAnalyzeQuestionSchema
+>;
+
+export type AdminEnrollStudentInput = z.infer<typeof adminEnrollStudentSchema>;
+
+export type AdminEnrollmentParamInput = z.infer<
+  typeof adminEnrollmentParamSchema
+>;
+
+export type AdminEnrollmentStatusInput = z.infer<
+  typeof adminEnrollmentStatusSchema
 >;

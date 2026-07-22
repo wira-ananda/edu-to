@@ -43,6 +43,12 @@ enum TryoutStatus {
   CLOSED
 }
 
+enum EnrollmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id             String   @id @default(cuid())
   supabaseUserId String   @unique
@@ -54,7 +60,8 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  sessions TryoutSession[]
+  sessions    TryoutSession[]
+  enrollments TryoutEnrollment[]
 
   ownedSubjects  Subject[]  @relation("SubjectOwner")
   ownedQuestions Question[] @relation("QuestionOwner")
@@ -142,11 +149,37 @@ model Tryout {
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   owner   User?   @relation("TryoutOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  sessions TryoutSession[]
+  sessions    TryoutSession[]
+  enrollments TryoutEnrollment[]
 
   @@index([subjectId])
   @@index([ownerId])
   @@index([status])
+}
+
+model TryoutEnrollment {
+  id        String @id @default(cuid())
+  tryoutId  String
+  studentId String
+
+  status EnrollmentStatus @default(PENDING)
+
+  requestedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tryout  Tryout @relation(fields: [tryoutId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([tryoutId, studentId])
+  @@index([tryoutId])
+  @@index([studentId])
+  @@index([status])
+  @@index([tryoutId, status])
+  @@index([studentId, status])
 }
 
 model TryoutSession {

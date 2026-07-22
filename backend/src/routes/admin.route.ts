@@ -23,11 +23,27 @@ adminRoutes.put("/questions/:id", adminController.updateQuestion);
 adminRoutes.delete("/questions/:id", adminController.deleteQuestion);
 
 adminRoutes.get("/tryouts", adminController.getTryouts);
-adminRoutes.get("/tryouts/:id", adminController.getTryoutById);
 adminRoutes.post("/tryouts", adminController.createTryout);
+
+adminRoutes.get(
+  "/tryouts/:id/participants",
+  adminController.getTryoutParticipants,
+);
+adminRoutes.post(
+  "/tryouts/:id/participants/:studentId",
+  adminController.enrollStudent,
+);
+
+adminRoutes.get("/tryouts/:id/results", adminController.getTryoutResults);
+adminRoutes.get("/tryouts/:id/statistics", adminController.getTryoutStatistics);
+
+adminRoutes.get("/tryouts/:id", adminController.getTryoutById);
 adminRoutes.put("/tryouts/:id", adminController.updateTryout);
 adminRoutes.patch("/tryouts/:id/status", adminController.updateTryoutStatus);
 adminRoutes.delete("/tryouts/:id", adminController.deleteTryout);
 
-adminRoutes.get("/tryouts/:id/results", adminController.getTryoutResults);
-adminRoutes.get("/tryouts/:id/statistics", adminController.getTryoutStatistics);
+adminRoutes.patch(
+  "/enrollments/:id/approve",
+  adminController.approveEnrollment,
+);
+adminRoutes.patch("/enrollments/:id/reject", adminController.rejectEnrollment);

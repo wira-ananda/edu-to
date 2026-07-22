@@ -10,7 +10,11 @@ import {
   type QuestionImageFile,
   type UploadedQuestionImage,
 } from "../lib/question-image-storage.js";
-import type { DifficultyLevel, WeightPriority } from "../types/domain.js";
+import type {
+  DifficultyLevel,
+  EnrollmentStatus,
+  WeightPriority,
+} from "../types/domain.js";
 import {
   difficultyLevels,
   weightPriorities,
@@ -29,6 +33,34 @@ export class TeacherServiceError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const enrollmentStudentSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  school: true,
+  className: true,
+  createdAt: true,
+  updatedAt: true,
+} as const satisfies Prisma.UserSelect;
+
+const enrollmentInclude = {
+  student: {
+    select: enrollmentStudentSelect,
+  },
+  tryout: {
+    select: {
+      id: true,
+      title: true,
+      ownerId: true,
+    },
+  },
+} as const satisfies Prisma.TryoutEnrollmentInclude;
+
+type EnrollmentWithStudent = Prisma.TryoutEnrollmentGetPayload<{
+  include: typeof enrollmentInclude;
+}>;
 
 function cleanOptionalText(value?: string | null) {
   const cleanedValue = value?.trim();
@@ -54,6 +86,32 @@ function calculateAverageScore(scores: number[]) {
   );
 }
 
+function calculateAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    values.reduce((total, value) => total + value, 0) / values.length,
+  );
+}
+
+function toEnrollmentPayload(enrollment: EnrollmentWithStudent) {
+  return {
+    id: enrollment.id,
+    tryoutId: enrollment.tryoutId,
+    studentId: enrollment.studentId,
+    status: enrollment.status as EnrollmentStatus,
+    requestedAt: enrollment.requestedAt,
+    approvedAt: enrollment.approvedAt,
+    rejectedAt: enrollment.rejectedAt,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
+    student: enrollment.student,
+    tryout: enrollment.tryout,
+  };
+}
+
 async function getOwnedSubject(subjectId: string, teacherId: string) {
   return prisma.subject.findFirst({
     where: {
@@ -74,6 +132,16 @@ async function getOwnedTryout(tryoutId: string, teacherId: string) {
       ownerId: teacherId,
     },
   });
+}
+
+async function assertOwnedTryout(tryoutId: string, teacherId: string) {
+  const tryout = await getOwnedTryout(tryoutId, teacherId);
+
+  if (!tryout) {
+    throw new TeacherServiceError("Tryout tidak ditemukan", 404);
+  }
+
+  return tryout;
 }
 
 async function validateTryoutQuestionAvailability(
@@ -587,9 +655,15 @@ async function getTryouts(teacherId: string) {
           },
         },
       },
+      enrollments: {
+        select: {
+          status: true,
+        },
+      },
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -599,24 +673,42 @@ async function getTryouts(teacherId: string) {
   });
 
   return {
-    tryouts: tryouts.map((tryout) => ({
-      id: tryout.id,
-      subjectId: tryout.subjectId,
-      ownerId: tryout.ownerId,
-      title: tryout.title,
-      totalQuestions: tryout.totalQuestions,
-      durationMinutes: tryout.durationMinutes,
-      maxAttempts: tryout.maxAttempts,
-      status: tryout.status,
-      createdAt: tryout.createdAt,
-      updatedAt: tryout.updatedAt,
-      totalSessions: tryout._count.sessions,
-      bank: {
-        id: tryout.subject.id,
-        name: tryout.subject.name,
-        totalAvailableQuestions: tryout.subject._count.questions,
-      },
-    })),
+    tryouts: tryouts.map((tryout) => {
+      const totalParticipants = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "APPROVED",
+      ).length;
+
+      const pendingRequests = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "PENDING",
+      ).length;
+
+      const rejectedParticipants = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "REJECTED",
+      ).length;
+
+      return {
+        id: tryout.id,
+        subjectId: tryout.subjectId,
+        ownerId: tryout.ownerId,
+        title: tryout.title,
+        totalQuestions: tryout.totalQuestions,
+        durationMinutes: tryout.durationMinutes,
+        maxAttempts: tryout.maxAttempts,
+        status: tryout.status,
+        createdAt: tryout.createdAt,
+        updatedAt: tryout.updatedAt,
+        totalSessions: tryout._count.sessions,
+        totalEnrollments: tryout._count.enrollments,
+        totalParticipants,
+        pendingRequests,
+        rejectedParticipants,
+        bank: {
+          id: tryout.subject.id,
+          name: tryout.subject.name,
+          totalAvailableQuestions: tryout.subject._count.questions,
+        },
+      };
+    }),
   };
 }
 
@@ -636,9 +728,15 @@ async function getTryoutById(teacherId: string, id: string) {
           },
         },
       },
+      enrollments: {
+        select: {
+          status: true,
+        },
+      },
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -647,6 +745,18 @@ async function getTryoutById(teacherId: string, id: string) {
   if (!tryout) {
     throw new TeacherServiceError("Tryout tidak ditemukan", 404);
   }
+
+  const totalParticipants = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "APPROVED",
+  ).length;
+
+  const pendingRequests = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "PENDING",
+  ).length;
+
+  const rejectedParticipants = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "REJECTED",
+  ).length;
 
   return {
     tryout: {
@@ -661,6 +771,10 @@ async function getTryoutById(teacherId: string, id: string) {
       createdAt: tryout.createdAt,
       updatedAt: tryout.updatedAt,
       totalSessions: tryout._count.sessions,
+      totalEnrollments: tryout._count.enrollments,
+      totalParticipants,
+      pendingRequests,
+      rejectedParticipants,
       bank: {
         id: tryout.subject.id,
         name: tryout.subject.name,
@@ -780,6 +894,7 @@ async function deleteTryout(teacherId: string, id: string) {
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -796,6 +911,13 @@ async function deleteTryout(teacherId: string, id: string) {
     );
   }
 
+  if (existingTryout._count.enrollments > 0) {
+    throw new TeacherServiceError(
+      "Tryout tidak dapat dihapus karena sudah memiliki daftar peserta",
+      400,
+    );
+  }
+
   await prisma.tryout.delete({
     where: {
       id,
@@ -805,6 +927,277 @@ async function deleteTryout(teacherId: string, id: string) {
   return null;
 }
 
+async function getTryoutParticipants(teacherId: string, id: string) {
+  const tryout = await assertOwnedTryout(id, teacherId);
+
+  const enrollments = await prisma.tryoutEnrollment.findMany({
+    where: {
+      tryoutId: tryout.id,
+    },
+    include: {
+      student: {
+        select: {
+          ...enrollmentStudentSelect,
+          sessions: {
+            where: {
+              tryoutId: tryout.id,
+            },
+            select: {
+              id: true,
+              attemptNumber: true,
+              score: true,
+              correctCount: true,
+              wrongCount: true,
+              totalQuestions: true,
+              status: true,
+              startedAt: true,
+              finishedAt: true,
+              _count: {
+                select: {
+                  answers: true,
+                },
+              },
+            },
+            orderBy: [
+              {
+                attemptNumber: "asc",
+              },
+              {
+                startedAt: "asc",
+              },
+            ],
+          },
+        },
+      },
+    },
+    orderBy: [
+      {
+        status: "asc",
+      },
+      {
+        createdAt: "desc",
+      },
+    ],
+  });
+
+  const participants = enrollments.map((enrollment) => ({
+    id: enrollment.id,
+    tryoutId: enrollment.tryoutId,
+    studentId: enrollment.studentId,
+    status: enrollment.status as EnrollmentStatus,
+    requestedAt: enrollment.requestedAt,
+    approvedAt: enrollment.approvedAt,
+    rejectedAt: enrollment.rejectedAt,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
+    student: {
+      id: enrollment.student.id,
+      name: enrollment.student.name,
+      email: enrollment.student.email,
+      role: enrollment.student.role,
+      school: enrollment.student.school,
+      className: enrollment.student.className,
+      createdAt: enrollment.student.createdAt,
+      updatedAt: enrollment.student.updatedAt,
+    },
+    attempts: enrollment.student.sessions.map((session) => ({
+      id: session.id,
+      attemptNumber: session.attemptNumber,
+      score: session.score,
+      correctCount: session.correctCount,
+      wrongCount: session.wrongCount,
+      totalQuestions: session.totalQuestions,
+      status: session.status,
+      startedAt: session.startedAt,
+      finishedAt: session.finishedAt,
+      answeredCount: session._count.answers,
+    })),
+  }));
+
+  return {
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      maxAttempts: tryout.maxAttempts,
+      status: tryout.status,
+    },
+    summary: {
+      totalParticipants: participants.filter(
+        (participant) => participant.status === "APPROVED",
+      ).length,
+      pendingRequests: participants.filter(
+        (participant) => participant.status === "PENDING",
+      ).length,
+      rejectedParticipants: participants.filter(
+        (participant) => participant.status === "REJECTED",
+      ).length,
+      totalEnrollments: participants.length,
+    },
+    participants,
+  };
+}
+
+async function enrollStudent(
+  teacherId: string,
+  tryoutId: string,
+  studentId: string,
+) {
+  const tryout = await assertOwnedTryout(tryoutId, teacherId);
+
+  const student = await prisma.user.findFirst({
+    where: {
+      id: studentId,
+      role: "STUDENT",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!student) {
+    throw new TeacherServiceError("Siswa tidak ditemukan", 404);
+  }
+
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      tryoutId_studentId: {
+        tryoutId: tryout.id,
+        studentId: student.id,
+      },
+    },
+    include: enrollmentInclude,
+  });
+
+  if (existingEnrollment?.status === "APPROVED") {
+    return {
+      created: false,
+      message: "Siswa sudah menjadi peserta tryout ini.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  if (existingEnrollment) {
+    const enrollment = await prisma.tryoutEnrollment.update({
+      where: {
+        id: existingEnrollment.id,
+      },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+        rejectedAt: null,
+      },
+      include: enrollmentInclude,
+    });
+
+    return {
+      created: false,
+      message: "Siswa berhasil dimasukkan sebagai peserta tryout.",
+      enrollment: toEnrollmentPayload(enrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.create({
+    data: {
+      tryoutId: tryout.id,
+      studentId: student.id,
+      status: "APPROVED",
+      approvedAt: new Date(),
+      rejectedAt: null,
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    created: true,
+    message: "Siswa berhasil dimasukkan sebagai peserta tryout.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
+}
+
+async function approveEnrollment(teacherId: string, enrollmentId: string) {
+  const existingEnrollment = await prisma.tryoutEnrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      tryout: {
+        is: {
+          ownerId: teacherId,
+        },
+      },
+    },
+    include: enrollmentInclude,
+  });
+
+  if (!existingEnrollment) {
+    throw new TeacherServiceError("Data peserta tidak ditemukan", 404);
+  }
+
+  if (existingEnrollment.status === "APPROVED") {
+    return {
+      message: "Peserta sudah disetujui.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.update({
+    where: {
+      id: existingEnrollment.id,
+    },
+    data: {
+      status: "APPROVED",
+      approvedAt: new Date(),
+      rejectedAt: null,
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    message: "Peserta berhasil disetujui.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
+}
+
+async function rejectEnrollment(teacherId: string, enrollmentId: string) {
+  const existingEnrollment = await prisma.tryoutEnrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      tryout: {
+        is: {
+          ownerId: teacherId,
+        },
+      },
+    },
+    include: enrollmentInclude,
+  });
+
+  if (!existingEnrollment) {
+    throw new TeacherServiceError("Data peserta tidak ditemukan", 404);
+  }
+
+  if (existingEnrollment.status === "REJECTED") {
+    return {
+      message: "Peserta sudah ditolak.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.update({
+    where: {
+      id: existingEnrollment.id,
+    },
+    data: {
+      status: "REJECTED",
+      approvedAt: null,
+      rejectedAt: new Date(),
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    message: "Peserta berhasil ditolak.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
+}
+
 async function getTryoutResults(teacherId: string, id: string) {
   const tryout = await getOwnedTryout(id, teacherId);
 
@@ -812,9 +1205,26 @@ async function getTryoutResults(teacherId: string, id: string) {
     throw new TeacherServiceError("Tryout tidak ditemukan", 404);
   }
 
+  const approvedEnrollments = await prisma.tryoutEnrollment.findMany({
+    where: {
+      tryoutId: id,
+      status: "APPROVED",
+    },
+    select: {
+      studentId: true,
+    },
+  });
+
+  const approvedStudentIds = approvedEnrollments.map(
+    (enrollment) => enrollment.studentId,
+  );
+
   const sessions = await prisma.tryoutSession.findMany({
     where: {
       tryoutId: id,
+      userId: {
+        in: approvedStudentIds,
+      },
     },
     include: {
       user: true,
@@ -863,28 +1273,64 @@ async function getTryoutResults(teacherId: string, id: string) {
 }
 
 async function getTryoutStatistics(teacherId: string, id: string) {
-  const tryout = await getOwnedTryout(id, teacherId);
+  const tryout = await prisma.tryout.findFirst({
+    where: {
+      id,
+      ownerId: teacherId,
+    },
+    include: {
+      subject: true,
+    },
+  });
 
   if (!tryout) {
     throw new TeacherServiceError("Tryout tidak ditemukan", 404);
   }
 
-  const sessions = await prisma.tryoutSession.findMany({
+  const enrollments = await prisma.tryoutEnrollment.findMany({
     where: {
       tryoutId: id,
     },
     include: {
-      user: true,
+      student: {
+        select: enrollmentStudentSelect,
+      },
     },
-    orderBy: [
-      {
-        attemptNumber: "asc",
-      },
-      {
-        startedAt: "asc",
-      },
-    ],
+    orderBy: {
+      createdAt: "asc",
+    },
   });
+
+  const approvedEnrollments = enrollments.filter(
+    (enrollment) => enrollment.status === "APPROVED",
+  );
+
+  const approvedStudentIds = approvedEnrollments.map(
+    (enrollment) => enrollment.studentId,
+  );
+
+  const sessions =
+    approvedStudentIds.length > 0
+      ? await prisma.tryoutSession.findMany({
+          where: {
+            tryoutId: id,
+            userId: {
+              in: approvedStudentIds,
+            },
+          },
+          include: {
+            user: true,
+          },
+          orderBy: [
+            {
+              attemptNumber: "asc",
+            },
+            {
+              startedAt: "asc",
+            },
+          ],
+        })
+      : [];
 
   const finishedSessions = sessions.filter(
     (session) => session.status === "FINISHED",
@@ -892,7 +1338,21 @@ async function getTryoutStatistics(teacherId: string, id: string) {
 
   const scores = finishedSessions.map((session) => session.score);
 
-  const totalStudents = new Set(sessions.map((session) => session.userId)).size;
+  const totalParticipants = approvedEnrollments.length;
+  const pendingRequests = enrollments.filter(
+    (enrollment) => enrollment.status === "PENDING",
+  ).length;
+  const rejectedParticipants = enrollments.filter(
+    (enrollment) => enrollment.status === "REJECTED",
+  ).length;
+
+  const totalStudentsWithSession = new Set(
+    sessions.map((session) => session.userId),
+  ).size;
+
+  const finishedStudentIds = new Set(
+    finishedSessions.map((session) => session.userId),
+  );
 
   const averageScore = calculateAverageScore(scores);
 
@@ -901,37 +1361,84 @@ async function getTryoutStatistics(teacherId: string, id: string) {
   const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
 
   const completionRate =
-    sessions.length > 0
-      ? Math.round((finishedSessions.length / sessions.length) * 100)
+    totalParticipants > 0
+      ? Math.round((finishedStudentIds.size / totalParticipants) * 100)
       : 0;
 
   const attemptMap = new Map<
     number,
     {
-      totalScore: number;
-      totalSessions: number;
+      scores: number[];
+      correctCounts: number[];
+      wrongCounts: number[];
+      totalFinishedSessions: number;
     }
   >();
 
   for (const session of finishedSessions) {
     const current = attemptMap.get(session.attemptNumber) ?? {
-      totalScore: 0,
-      totalSessions: 0,
+      scores: [],
+      correctCounts: [],
+      wrongCounts: [],
+      totalFinishedSessions: 0,
     };
 
-    current.totalScore += session.score;
-    current.totalSessions += 1;
+    current.scores.push(session.score);
+    current.correctCounts.push(session.correctCount);
+    current.wrongCounts.push(session.wrongCount);
+    current.totalFinishedSessions += 1;
 
     attemptMap.set(session.attemptNumber, current);
   }
 
-  const attemptTrend = Array.from(attemptMap.entries()).map(
-    ([attemptNumber, value]) => ({
+  const progressCurve = Array.from(attemptMap.entries())
+    .map(([attemptNumber, value]) => ({
       attemptNumber,
-      averageScore: Math.round(value.totalScore / value.totalSessions),
-      totalSessions: value.totalSessions,
-    }),
-  );
+      totalFinishedSessions: value.totalFinishedSessions,
+      averageScore: calculateAverage(value.scores),
+      averageCorrect: calculateAverage(value.correctCounts),
+      averageWrong: calculateAverage(value.wrongCounts),
+      completionRate:
+        totalParticipants > 0
+          ? Math.round((value.totalFinishedSessions / totalParticipants) * 100)
+          : 0,
+    }))
+    .sort((a, b) => a.attemptNumber - b.attemptNumber);
+
+  const attemptTrend = progressCurve.map((item) => ({
+    attemptNumber: item.attemptNumber,
+    averageScore: item.averageScore,
+    totalSessions: item.totalFinishedSessions,
+  }));
+
+  const latestScoreByStudent = new Map<string, number>();
+
+  for (const session of finishedSessions) {
+    latestScoreByStudent.set(session.userId, session.score);
+  }
+
+  const latestScores = Array.from(latestScoreByStudent.values());
+
+  const averageLatestScore = calculateAverageScore(latestScores);
+
+  let trend: "IMPROVING" | "DECLINING" | "STABLE" | "NO_DATA" = "NO_DATA";
+
+  if (progressCurve.length >= 2) {
+    const firstAverage = progressCurve[0]?.averageScore ?? 0;
+    const lastAverage =
+      progressCurve[progressCurve.length - 1]?.averageScore ?? 0;
+    const diff = lastAverage - firstAverage;
+
+    if (diff >= 5) {
+      trend = "IMPROVING";
+    } else if (diff <= -5) {
+      trend = "DECLINING";
+    } else {
+      trend = "STABLE";
+    }
+  } else if (progressCurve.length === 1) {
+    trend = "STABLE";
+  }
 
   const studentMap = new Map<
     string,
@@ -969,15 +1476,32 @@ async function getTryoutStatistics(teacherId: string, id: string) {
   }
 
   return {
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      bankName: tryout.subject.name,
+      maxAttempts: tryout.maxAttempts,
+      totalQuestions: tryout.totalQuestions,
+      durationMinutes: tryout.durationMinutes,
+      status: tryout.status,
+    },
     summary: {
-      totalStudents,
+      totalParticipants,
+      pendingRequests,
+      rejectedParticipants,
+      totalStudents: totalParticipants,
+      totalStudentsWithSession,
       totalSessions: sessions.length,
       finishedSessions: finishedSessions.length,
+      totalFinishedParticipants: finishedStudentIds.size,
       averageScore,
+      averageLatestScore,
       highestScore,
       lowestScore,
       completionRate,
+      trend,
     },
+    progressCurve,
     attemptTrend,
     studentProgress: Array.from(studentMap.values()),
   };
@@ -1001,6 +1525,11 @@ export default {
   updateTryout,
   updateTryoutStatus,
   deleteTryout,
+
+  getTryoutParticipants,
+  enrollStudent,
+  approveEnrollment,
+  rejectEnrollment,
 
   getTryoutResults,
   getTryoutStatistics,

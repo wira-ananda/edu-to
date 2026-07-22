@@ -23,8 +23,24 @@ teacherRoutes.put("/questions/:id", teacherController.updateQuestion);
 teacherRoutes.delete("/questions/:id", teacherController.deleteQuestion);
 
 teacherRoutes.get("/tryouts", teacherController.getTryouts);
-teacherRoutes.get("/tryouts/:id", teacherController.getTryoutById);
 teacherRoutes.post("/tryouts", teacherController.createTryout);
+
+teacherRoutes.get(
+  "/tryouts/:id/participants",
+  teacherController.getTryoutParticipants,
+);
+teacherRoutes.post(
+  "/tryouts/:id/participants/:studentId",
+  teacherController.enrollStudent,
+);
+
+teacherRoutes.get("/tryouts/:id/results", teacherController.getTryoutResults);
+teacherRoutes.get(
+  "/tryouts/:id/statistics",
+  teacherController.getTryoutStatistics,
+);
+
+teacherRoutes.get("/tryouts/:id", teacherController.getTryoutById);
 teacherRoutes.put("/tryouts/:id", teacherController.updateTryout);
 teacherRoutes.patch(
   "/tryouts/:id/status",
@@ -32,8 +48,11 @@ teacherRoutes.patch(
 );
 teacherRoutes.delete("/tryouts/:id", teacherController.deleteTryout);
 
-teacherRoutes.get("/tryouts/:id/results", teacherController.getTryoutResults);
-teacherRoutes.get(
-  "/tryouts/:id/statistics",
-  teacherController.getTryoutStatistics,
+teacherRoutes.patch(
+  "/enrollments/:id/approve",
+  teacherController.approveEnrollment,
+);
+teacherRoutes.patch(
+  "/enrollments/:id/reject",
+  teacherController.rejectEnrollment,
 );

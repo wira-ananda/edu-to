@@ -27,6 +27,32 @@
   let errorMessage = $state("");
   let tryouts = $state<AdminTryoutItem[]>([]);
 
+  function isValidEnrollmentCache(cachedTryouts: AdminTryoutItem[]) {
+    return cachedTryouts.every(
+      (tryout) =>
+        "totalEnrollments" in tryout &&
+        "totalParticipants" in tryout &&
+        "pendingRequests" in tryout &&
+        "rejectedParticipants" in tryout,
+    );
+  }
+
+  function getOwnerLabel(tryout: AdminTryoutItem) {
+    if (!tryout.owner) {
+      return "Tanpa owner";
+    }
+
+    if (tryout.owner.role === "ADMIN") {
+      return `Admin: ${tryout.owner.name}`;
+    }
+
+    if (tryout.owner.role === "TEACHER") {
+      return `Guru: ${tryout.owner.name}`;
+    }
+
+    return tryout.owner.name;
+  }
+
   async function loadTryouts(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
 
@@ -34,7 +60,7 @@
 
     const cachedTryouts = !force ? readAdminTryoutsCache() : null;
 
-    if (cachedTryouts) {
+    if (cachedTryouts && isValidEnrollmentCache(cachedTryouts)) {
       tryouts = cachedTryouts;
       loading = false;
       return;
@@ -43,7 +69,7 @@
     loading = tryouts.length === 0;
 
     try {
-      tryouts = await getAdminTryoutsCached({ force });
+      tryouts = await getAdminTryoutsCached({ force: true });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat tryout.";
@@ -154,6 +180,7 @@
   >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Daftar Tryout</h2>
+
       <p class="mt-1 text-sm text-slate-500">
         Kelola paket tryout yang akan dikerjakan siswa.
       </p>
@@ -191,7 +218,7 @@
     class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
   >
     <div class="overflow-x-auto">
-      <table class="w-full min-w-[980px] text-left text-sm">
+      <table class="w-full min-w-[1240px] text-left text-sm">
         <thead
           class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
         >
@@ -202,7 +229,8 @@
             <th class="px-5 py-4">Durasi</th>
             <th class="px-5 py-4">Percobaan</th>
             <th class="px-5 py-4">Status</th>
-            <th class="px-5 py-4">Sesi Siswa</th>
+            <th class="px-5 py-4">Peserta</th>
+            <th class="px-5 py-4">Sesi</th>
             <th class="px-5 py-4">Aksi</th>
           </tr>
         </thead>
@@ -210,13 +238,13 @@
         <tbody>
           {#if loading}
             <tr>
-              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
                 Memuat data...
               </td>
             </tr>
           {:else if tryouts.length === 0}
             <tr>
-              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
                 Belum ada tryout.
               </td>
             </tr>
@@ -226,11 +254,9 @@
                 <td class="px-5 py-4">
                   <p class="font-bold text-slate-900">{tryout.title}</p>
 
-                  {#if tryout.owner}
-                    <p class="mt-1 text-xs text-slate-500">
-                      Pemilik: {tryout.owner.name}
-                    </p>
-                  {/if}
+                  <p class="mt-1 text-xs font-semibold text-slate-500">
+                    {getOwnerLabel(tryout)}
+                  </p>
 
                   <p class="text-xs text-slate-400">
                     {new Date(tryout.createdAt).toLocaleString("id-ID")}
@@ -239,6 +265,7 @@
 
                 <td class="px-5 py-4">
                   <p class="font-semibold text-slate-700">{tryout.bank.name}</p>
+
                   <p class="text-xs text-slate-400">
                     {tryout.bank.totalAvailableQuestions} soal tersedia
                   </p>
@@ -279,12 +306,47 @@
                   </div>
                 </td>
 
+                <td class="px-5 py-4">
+                  <p class="font-bold text-slate-900">
+                    {tryout.totalParticipants}
+                    <span class="text-xs font-semibold text-slate-400">
+                      approved
+                    </span>
+                  </p>
+
+                  <p class="text-xs font-semibold text-amber-700">
+                    Pending: {tryout.pendingRequests}
+                  </p>
+
+                  <p class="text-xs font-semibold text-red-600">
+                    Ditolak: {tryout.rejectedParticipants}
+                  </p>
+                </td>
+
                 <td class="px-5 py-4 font-semibold text-slate-700">
                   {tryout.totalSessions}
                 </td>
 
                 <td class="px-5 py-4">
                   <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onclick={() =>
+                        goto(`/admin/tryouts/${tryout.id}/participants`)}
+                      class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700"
+                    >
+                      Peserta
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick={() =>
+                        goto(`/admin/results?tryoutId=${tryout.id}`)}
+                      class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700"
+                    >
+                      Hasil
+                    </button>
+
                     <button
                       type="button"
                       onclick={() => goto(`/admin/tryouts/${tryout.id}/edit`)}

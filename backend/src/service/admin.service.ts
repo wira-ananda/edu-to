@@ -10,7 +10,11 @@ import {
   type QuestionImageFile,
   type UploadedQuestionImage,
 } from "../lib/question-image-storage.js";
-import type { DifficultyLevel, WeightPriority } from "../types/domain.js";
+import type {
+  DifficultyLevel,
+  EnrollmentStatus,
+  WeightPriority,
+} from "../types/domain.js";
 import {
   difficultyLevels,
   weightPriorities,
@@ -30,6 +34,44 @@ export class AdminServiceError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const ownerSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+} as const satisfies Prisma.UserSelect;
+
+const enrollmentStudentSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  school: true,
+  className: true,
+  createdAt: true,
+  updatedAt: true,
+} as const satisfies Prisma.UserSelect;
+
+const enrollmentInclude = {
+  student: {
+    select: enrollmentStudentSelect,
+  },
+  tryout: {
+    select: {
+      id: true,
+      title: true,
+      ownerId: true,
+      owner: {
+        select: ownerSelect,
+      },
+    },
+  },
+} as const satisfies Prisma.TryoutEnrollmentInclude;
+
+type EnrollmentWithStudent = Prisma.TryoutEnrollmentGetPayload<{
+  include: typeof enrollmentInclude;
+}>;
 
 function cleanOptionalText(value?: string | null): string | null {
   const cleanedValue = value?.trim();
@@ -55,36 +97,74 @@ function calculateAverageScore(scores: number[]) {
   );
 }
 
-async function validateTeacherOwner(ownerId?: string | null) {
+function calculateAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    values.reduce((total, value) => total + value, 0) / values.length,
+  );
+}
+
+function toEnrollmentPayload(enrollment: EnrollmentWithStudent) {
+  return {
+    id: enrollment.id,
+    tryoutId: enrollment.tryoutId,
+    studentId: enrollment.studentId,
+    status: enrollment.status as EnrollmentStatus,
+    requestedAt: enrollment.requestedAt,
+    approvedAt: enrollment.approvedAt,
+    rejectedAt: enrollment.rejectedAt,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
+    student: enrollment.student,
+    tryout: enrollment.tryout,
+  };
+}
+
+async function validateOwnerForAdmin(
+  currentAdminId: string,
+  ownerId?: string | null,
+) {
   const cleanedOwnerId = cleanOptionalText(ownerId);
 
   if (!cleanedOwnerId) {
+    return {
+      ok: true as const,
+      ownerId: currentAdminId,
+    };
+  }
+
+  if (cleanedOwnerId === "none") {
     return {
       ok: true as const,
       ownerId: null,
     };
   }
 
-  const teacher = await prisma.user.findFirst({
+  const owner = await prisma.user.findFirst({
     where: {
       id: cleanedOwnerId,
-      role: "TEACHER",
+      role: {
+        in: ["ADMIN", "TEACHER"],
+      },
     },
     select: {
       id: true,
     },
   });
 
-  if (!teacher) {
+  if (!owner) {
     return {
       ok: false as const,
-      message: "Teacher tidak ditemukan",
+      message: "Owner tidak ditemukan",
     };
   }
 
   return {
     ok: true as const,
-    ownerId: teacher.id,
+    ownerId: owner.id,
   };
 }
 
@@ -147,6 +227,20 @@ async function validateTryoutQuestionAvailability(
   };
 }
 
+async function assertTryoutExists(id: string) {
+  const tryout = await prisma.tryout.findUnique({
+    where: {
+      id,
+    },
+  });
+
+  if (!tryout) {
+    throw new AdminServiceError("Tryout tidak ditemukan", 404);
+  }
+
+  return tryout;
+}
+
 async function getSubjects(ownerIdQuery?: string) {
   const where: Prisma.SubjectWhereInput = ownerIdQuery
     ? {
@@ -158,12 +252,7 @@ async function getSubjects(ownerIdQuery?: string) {
     where,
     include: {
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
       _count: {
         select: {
@@ -189,8 +278,11 @@ async function getSubjects(ownerIdQuery?: string) {
   };
 }
 
-async function createSubject(input: AdminSubjectInput) {
-  const ownerValidation = await validateTeacherOwner(input.ownerId);
+async function createSubject(currentAdminId: string, input: AdminSubjectInput) {
+  const ownerValidation = await validateOwnerForAdmin(
+    currentAdminId,
+    input.ownerId,
+  );
 
   if (!ownerValidation.ok) {
     throw new AdminServiceError(ownerValidation.message, 404);
@@ -209,6 +301,11 @@ async function createSubject(input: AdminSubjectInput) {
       data: {
         name: input.name,
         ownerId: ownerValidation.ownerId,
+      },
+      include: {
+        owner: {
+          select: ownerSelect,
+        },
       },
     }));
 
@@ -302,12 +399,7 @@ async function getQuestions(query: {
     include: {
       subject: true,
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
     },
     orderBy: {
@@ -324,12 +416,7 @@ async function getQuestionBanks() {
   const subjects = await prisma.subject.findMany({
     include: {
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
       _count: {
         select: {
@@ -343,9 +430,14 @@ async function getQuestionBanks() {
         },
       },
     },
-    orderBy: {
-      name: "asc",
-    },
+    orderBy: [
+      {
+        ownerId: "asc",
+      },
+      {
+        name: "asc",
+      },
+    ],
   });
 
   const banks = subjects.map((subject) => {
@@ -396,12 +488,7 @@ async function getQuestionById(id: string) {
     include: {
       subject: true,
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
     },
   });
@@ -480,12 +567,7 @@ async function createQuestion(
       include: {
         subject: true,
         owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
+          select: ownerSelect,
         },
       },
     });
@@ -605,12 +687,7 @@ async function updateQuestion(
       include: {
         subject: true,
         owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
+          select: ownerSelect,
         },
       },
     });
@@ -676,12 +753,7 @@ async function getTryouts(query: { status?: string; ownerId?: string }) {
     where,
     include: {
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
       subject: {
         include: {
@@ -692,9 +764,15 @@ async function getTryouts(query: { status?: string; ownerId?: string }) {
           },
         },
       },
+      enrollments: {
+        select: {
+          status: true,
+        },
+      },
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -704,25 +782,43 @@ async function getTryouts(query: { status?: string; ownerId?: string }) {
   });
 
   return {
-    tryouts: tryouts.map((tryout) => ({
-      id: tryout.id,
-      subjectId: tryout.subjectId,
-      ownerId: tryout.ownerId,
-      owner: tryout.owner,
-      title: tryout.title,
-      totalQuestions: tryout.totalQuestions,
-      durationMinutes: tryout.durationMinutes,
-      maxAttempts: tryout.maxAttempts,
-      status: tryout.status,
-      createdAt: tryout.createdAt,
-      updatedAt: tryout.updatedAt,
-      bank: {
-        id: tryout.subject.id,
-        name: tryout.subject.name,
-        totalAvailableQuestions: tryout.subject._count.questions,
-      },
-      totalSessions: tryout._count.sessions,
-    })),
+    tryouts: tryouts.map((tryout) => {
+      const totalParticipants = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "APPROVED",
+      ).length;
+
+      const pendingRequests = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "PENDING",
+      ).length;
+
+      const rejectedParticipants = tryout.enrollments.filter(
+        (enrollment) => enrollment.status === "REJECTED",
+      ).length;
+
+      return {
+        id: tryout.id,
+        subjectId: tryout.subjectId,
+        ownerId: tryout.ownerId,
+        owner: tryout.owner,
+        title: tryout.title,
+        totalQuestions: tryout.totalQuestions,
+        durationMinutes: tryout.durationMinutes,
+        maxAttempts: tryout.maxAttempts,
+        status: tryout.status,
+        createdAt: tryout.createdAt,
+        updatedAt: tryout.updatedAt,
+        bank: {
+          id: tryout.subject.id,
+          name: tryout.subject.name,
+          totalAvailableQuestions: tryout.subject._count.questions,
+        },
+        totalSessions: tryout._count.sessions,
+        totalEnrollments: tryout._count.enrollments,
+        totalParticipants,
+        pendingRequests,
+        rejectedParticipants,
+      };
+    }),
   };
 }
 
@@ -733,12 +829,7 @@ async function getTryoutById(id: string) {
     },
     include: {
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
       subject: {
         include: {
@@ -749,9 +840,15 @@ async function getTryoutById(id: string) {
           },
         },
       },
+      enrollments: {
+        select: {
+          status: true,
+        },
+      },
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -760,6 +857,18 @@ async function getTryoutById(id: string) {
   if (!tryout) {
     throw new AdminServiceError("Tryout tidak ditemukan", 404);
   }
+
+  const totalParticipants = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "APPROVED",
+  ).length;
+
+  const pendingRequests = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "PENDING",
+  ).length;
+
+  const rejectedParticipants = tryout.enrollments.filter(
+    (enrollment) => enrollment.status === "REJECTED",
+  ).length;
 
   return {
     tryout: {
@@ -780,6 +889,10 @@ async function getTryoutById(id: string) {
         totalAvailableQuestions: tryout.subject._count.questions,
       },
       totalSessions: tryout._count.sessions,
+      totalEnrollments: tryout._count.enrollments,
+      totalParticipants,
+      pendingRequests,
+      rejectedParticipants,
     },
   };
 }
@@ -807,12 +920,7 @@ async function createTryout(input: AdminTryoutInput) {
     include: {
       subject: true,
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
     },
   });
@@ -858,12 +966,7 @@ async function updateTryout(id: string, input: AdminTryoutInput) {
     include: {
       subject: true,
       owner: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
+        select: ownerSelect,
       },
     },
   });
@@ -907,6 +1010,7 @@ async function deleteTryout(id: string) {
       _count: {
         select: {
           sessions: true,
+          enrollments: true,
         },
       },
     },
@@ -923,6 +1027,13 @@ async function deleteTryout(id: string) {
     );
   }
 
+  if (existingTryout._count.enrollments > 0) {
+    throw new AdminServiceError(
+      "Tryout tidak dapat dihapus karena sudah memiliki daftar peserta",
+      400,
+    );
+  }
+
   await prisma.tryout.delete({
     where: {
       id,
@@ -930,6 +1041,263 @@ async function deleteTryout(id: string) {
   });
 
   return null;
+}
+
+async function getTryoutParticipants(id: string) {
+  const tryout = await assertTryoutExists(id);
+
+  const enrollments = await prisma.tryoutEnrollment.findMany({
+    where: {
+      tryoutId: tryout.id,
+    },
+    include: {
+      student: {
+        select: {
+          ...enrollmentStudentSelect,
+          sessions: {
+            where: {
+              tryoutId: tryout.id,
+            },
+            select: {
+              id: true,
+              attemptNumber: true,
+              score: true,
+              correctCount: true,
+              wrongCount: true,
+              totalQuestions: true,
+              status: true,
+              startedAt: true,
+              finishedAt: true,
+              _count: {
+                select: {
+                  answers: true,
+                },
+              },
+            },
+            orderBy: [
+              {
+                attemptNumber: "asc",
+              },
+              {
+                startedAt: "asc",
+              },
+            ],
+          },
+        },
+      },
+    },
+    orderBy: [
+      {
+        status: "asc",
+      },
+      {
+        createdAt: "desc",
+      },
+    ],
+  });
+
+  const participants = enrollments.map((enrollment) => ({
+    id: enrollment.id,
+    tryoutId: enrollment.tryoutId,
+    studentId: enrollment.studentId,
+    status: enrollment.status as EnrollmentStatus,
+    requestedAt: enrollment.requestedAt,
+    approvedAt: enrollment.approvedAt,
+    rejectedAt: enrollment.rejectedAt,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
+    student: {
+      id: enrollment.student.id,
+      name: enrollment.student.name,
+      email: enrollment.student.email,
+      role: enrollment.student.role,
+      school: enrollment.student.school,
+      className: enrollment.student.className,
+      createdAt: enrollment.student.createdAt,
+      updatedAt: enrollment.student.updatedAt,
+    },
+    attempts: enrollment.student.sessions.map((session) => ({
+      id: session.id,
+      attemptNumber: session.attemptNumber,
+      score: session.score,
+      correctCount: session.correctCount,
+      wrongCount: session.wrongCount,
+      totalQuestions: session.totalQuestions,
+      status: session.status,
+      startedAt: session.startedAt,
+      finishedAt: session.finishedAt,
+      answeredCount: session._count.answers,
+    })),
+  }));
+
+  return {
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      maxAttempts: tryout.maxAttempts,
+      status: tryout.status,
+    },
+    summary: {
+      totalParticipants: participants.filter(
+        (participant) => participant.status === "APPROVED",
+      ).length,
+      pendingRequests: participants.filter(
+        (participant) => participant.status === "PENDING",
+      ).length,
+      rejectedParticipants: participants.filter(
+        (participant) => participant.status === "REJECTED",
+      ).length,
+      totalEnrollments: participants.length,
+    },
+    participants,
+  };
+}
+
+async function enrollStudent(tryoutId: string, studentId: string) {
+  const tryout = await assertTryoutExists(tryoutId);
+
+  const student = await prisma.user.findFirst({
+    where: {
+      id: studentId,
+      role: "STUDENT",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!student) {
+    throw new AdminServiceError("Siswa tidak ditemukan", 404);
+  }
+
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      tryoutId_studentId: {
+        tryoutId: tryout.id,
+        studentId: student.id,
+      },
+    },
+    include: enrollmentInclude,
+  });
+
+  if (existingEnrollment?.status === "APPROVED") {
+    return {
+      created: false,
+      message: "Siswa sudah menjadi peserta tryout ini.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  if (existingEnrollment) {
+    const enrollment = await prisma.tryoutEnrollment.update({
+      where: {
+        id: existingEnrollment.id,
+      },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+        rejectedAt: null,
+      },
+      include: enrollmentInclude,
+    });
+
+    return {
+      created: false,
+      message: "Siswa berhasil dimasukkan sebagai peserta tryout.",
+      enrollment: toEnrollmentPayload(enrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.create({
+    data: {
+      tryoutId: tryout.id,
+      studentId: student.id,
+      status: "APPROVED",
+      approvedAt: new Date(),
+      rejectedAt: null,
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    created: true,
+    message: "Siswa berhasil dimasukkan sebagai peserta tryout.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
+}
+
+async function approveEnrollment(enrollmentId: string) {
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      id: enrollmentId,
+    },
+    include: enrollmentInclude,
+  });
+
+  if (!existingEnrollment) {
+    throw new AdminServiceError("Data peserta tidak ditemukan", 404);
+  }
+
+  if (existingEnrollment.status === "APPROVED") {
+    return {
+      message: "Peserta sudah disetujui.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.update({
+    where: {
+      id: existingEnrollment.id,
+    },
+    data: {
+      status: "APPROVED",
+      approvedAt: new Date(),
+      rejectedAt: null,
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    message: "Peserta berhasil disetujui.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
+}
+
+async function rejectEnrollment(enrollmentId: string) {
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      id: enrollmentId,
+    },
+    include: enrollmentInclude,
+  });
+
+  if (!existingEnrollment) {
+    throw new AdminServiceError("Data peserta tidak ditemukan", 404);
+  }
+
+  if (existingEnrollment.status === "REJECTED") {
+    return {
+      message: "Peserta sudah ditolak.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+    };
+  }
+
+  const enrollment = await prisma.tryoutEnrollment.update({
+    where: {
+      id: existingEnrollment.id,
+    },
+    data: {
+      status: "REJECTED",
+      approvedAt: null,
+      rejectedAt: new Date(),
+    },
+    include: enrollmentInclude,
+  });
+
+  return {
+    message: "Peserta berhasil ditolak.",
+    enrollment: toEnrollmentPayload(enrollment),
+  };
 }
 
 async function getTryoutResults(id: string) {
@@ -943,9 +1311,26 @@ async function getTryoutResults(id: string) {
     throw new AdminServiceError("Tryout tidak ditemukan", 404);
   }
 
+  const approvedEnrollments = await prisma.tryoutEnrollment.findMany({
+    where: {
+      tryoutId: id,
+      status: "APPROVED",
+    },
+    select: {
+      studentId: true,
+    },
+  });
+
+  const approvedStudentIds = approvedEnrollments.map(
+    (enrollment) => enrollment.studentId,
+  );
+
   const sessions = await prisma.tryoutSession.findMany({
     where: {
       tryoutId: id,
+      userId: {
+        in: approvedStudentIds,
+      },
     },
     include: {
       user: true,
@@ -998,28 +1383,59 @@ async function getTryoutStatistics(id: string) {
     where: {
       id,
     },
+    include: {
+      subject: true,
+    },
   });
 
   if (!tryout) {
     throw new AdminServiceError("Tryout tidak ditemukan", 404);
   }
 
-  const sessions = await prisma.tryoutSession.findMany({
+  const enrollments = await prisma.tryoutEnrollment.findMany({
     where: {
       tryoutId: id,
     },
     include: {
-      user: true,
+      student: {
+        select: enrollmentStudentSelect,
+      },
     },
-    orderBy: [
-      {
-        attemptNumber: "asc",
-      },
-      {
-        startedAt: "asc",
-      },
-    ],
+    orderBy: {
+      createdAt: "asc",
+    },
   });
+
+  const approvedEnrollments = enrollments.filter(
+    (enrollment) => enrollment.status === "APPROVED",
+  );
+
+  const approvedStudentIds = approvedEnrollments.map(
+    (enrollment) => enrollment.studentId,
+  );
+
+  const sessions =
+    approvedStudentIds.length > 0
+      ? await prisma.tryoutSession.findMany({
+          where: {
+            tryoutId: id,
+            userId: {
+              in: approvedStudentIds,
+            },
+          },
+          include: {
+            user: true,
+          },
+          orderBy: [
+            {
+              attemptNumber: "asc",
+            },
+            {
+              startedAt: "asc",
+            },
+          ],
+        })
+      : [];
 
   const finishedSessions = sessions.filter(
     (session) => session.status === "FINISHED",
@@ -1027,7 +1443,21 @@ async function getTryoutStatistics(id: string) {
 
   const scores = finishedSessions.map((session) => session.score);
 
-  const totalStudents = new Set(sessions.map((session) => session.userId)).size;
+  const totalParticipants = approvedEnrollments.length;
+  const pendingRequests = enrollments.filter(
+    (enrollment) => enrollment.status === "PENDING",
+  ).length;
+  const rejectedParticipants = enrollments.filter(
+    (enrollment) => enrollment.status === "REJECTED",
+  ).length;
+
+  const totalStudentsWithSession = new Set(
+    sessions.map((session) => session.userId),
+  ).size;
+
+  const finishedStudentIds = new Set(
+    finishedSessions.map((session) => session.userId),
+  );
 
   const averageScore = calculateAverageScore(scores);
 
@@ -1036,37 +1466,84 @@ async function getTryoutStatistics(id: string) {
   const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
 
   const completionRate =
-    sessions.length > 0
-      ? Math.round((finishedSessions.length / sessions.length) * 100)
+    totalParticipants > 0
+      ? Math.round((finishedStudentIds.size / totalParticipants) * 100)
       : 0;
 
   const attemptMap = new Map<
     number,
     {
-      totalScore: number;
-      totalSessions: number;
+      scores: number[];
+      correctCounts: number[];
+      wrongCounts: number[];
+      totalFinishedSessions: number;
     }
   >();
 
   for (const session of finishedSessions) {
     const current = attemptMap.get(session.attemptNumber) ?? {
-      totalScore: 0,
-      totalSessions: 0,
+      scores: [],
+      correctCounts: [],
+      wrongCounts: [],
+      totalFinishedSessions: 0,
     };
 
-    current.totalScore += session.score;
-    current.totalSessions += 1;
+    current.scores.push(session.score);
+    current.correctCounts.push(session.correctCount);
+    current.wrongCounts.push(session.wrongCount);
+    current.totalFinishedSessions += 1;
 
     attemptMap.set(session.attemptNumber, current);
   }
 
-  const attemptTrend = Array.from(attemptMap.entries()).map(
-    ([attemptNumber, value]) => ({
+  const progressCurve = Array.from(attemptMap.entries())
+    .map(([attemptNumber, value]) => ({
       attemptNumber,
-      averageScore: Math.round(value.totalScore / value.totalSessions),
-      totalSessions: value.totalSessions,
-    }),
-  );
+      totalFinishedSessions: value.totalFinishedSessions,
+      averageScore: calculateAverage(value.scores),
+      averageCorrect: calculateAverage(value.correctCounts),
+      averageWrong: calculateAverage(value.wrongCounts),
+      completionRate:
+        totalParticipants > 0
+          ? Math.round((value.totalFinishedSessions / totalParticipants) * 100)
+          : 0,
+    }))
+    .sort((a, b) => a.attemptNumber - b.attemptNumber);
+
+  const attemptTrend = progressCurve.map((item) => ({
+    attemptNumber: item.attemptNumber,
+    averageScore: item.averageScore,
+    totalSessions: item.totalFinishedSessions,
+  }));
+
+  const latestScoreByStudent = new Map<string, number>();
+
+  for (const session of finishedSessions) {
+    latestScoreByStudent.set(session.userId, session.score);
+  }
+
+  const latestScores = Array.from(latestScoreByStudent.values());
+
+  const averageLatestScore = calculateAverageScore(latestScores);
+
+  let trend: "IMPROVING" | "DECLINING" | "STABLE" | "NO_DATA" = "NO_DATA";
+
+  if (progressCurve.length >= 2) {
+    const firstAverage = progressCurve[0]?.averageScore ?? 0;
+    const lastAverage =
+      progressCurve[progressCurve.length - 1]?.averageScore ?? 0;
+    const diff = lastAverage - firstAverage;
+
+    if (diff >= 5) {
+      trend = "IMPROVING";
+    } else if (diff <= -5) {
+      trend = "DECLINING";
+    } else {
+      trend = "STABLE";
+    }
+  } else if (progressCurve.length === 1) {
+    trend = "STABLE";
+  }
 
   const studentMap = new Map<
     string,
@@ -1104,15 +1581,32 @@ async function getTryoutStatistics(id: string) {
   }
 
   return {
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      bankName: tryout.subject.name,
+      maxAttempts: tryout.maxAttempts,
+      totalQuestions: tryout.totalQuestions,
+      durationMinutes: tryout.durationMinutes,
+      status: tryout.status,
+    },
     summary: {
-      totalStudents,
+      totalParticipants,
+      pendingRequests,
+      rejectedParticipants,
+      totalStudents: totalParticipants,
+      totalStudentsWithSession,
       totalSessions: sessions.length,
       finishedSessions: finishedSessions.length,
+      totalFinishedParticipants: finishedStudentIds.size,
       averageScore,
+      averageLatestScore,
       highestScore,
       lowestScore,
       completionRate,
+      trend,
     },
+    progressCurve,
     attemptTrend,
     studentProgress: Array.from(studentMap.values()),
   };
@@ -1136,6 +1630,11 @@ export default {
   updateTryout,
   updateTryoutStatus,
   deleteTryout,
+
+  getTryoutParticipants,
+  enrollStudent,
+  approveEnrollment,
+  rejectEnrollment,
 
   getTryoutResults,
   getTryoutStatistics,

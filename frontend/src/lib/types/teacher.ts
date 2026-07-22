@@ -11,15 +11,18 @@ import type {
   SubjectsResponse,
 } from "./questions";
 import type {
+  AdminTryoutItem,
+  AdminTryoutResponse,
+  AdminTryoutsResponse,
   CreateTryoutPayload,
+  EnrollStudentResponse,
+  MutateEnrollmentResponse,
   MutateTryoutResponse,
+  TryoutParticipantsResponse,
   TryoutResultsResponse,
   TryoutStatisticsResponse,
   UpdateTryoutPayload,
   UpdateTryoutStatusPayload,
-  AdminTryoutItem,
-  AdminTryoutResponse,
-  AdminTryoutsResponse,
 } from "./admin";
 
 export type TeacherSubject = Subject;
@@ -64,3 +67,9 @@ export type TeacherMutateTryoutResponse = MutateTryoutResponse;
 export type TeacherTryoutResultsResponse = TryoutResultsResponse;
 
 export type TeacherTryoutStatisticsResponse = TryoutStatisticsResponse;
+
+export type TeacherTryoutParticipantsResponse = TryoutParticipantsResponse;
+
+export type TeacherEnrollStudentResponse = EnrollStudentResponse;
+
+export type TeacherMutateEnrollmentResponse = MutateEnrollmentResponse;

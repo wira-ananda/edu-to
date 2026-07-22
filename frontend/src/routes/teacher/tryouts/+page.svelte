@@ -175,7 +175,7 @@
     class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
   >
     <div class="overflow-x-auto">
-      <table class="w-full min-w-[980px] text-left text-sm">
+      <table class="w-full min-w-[1180px] text-left text-sm">
         <thead
           class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
         >
@@ -186,6 +186,7 @@
             <th class="px-5 py-4">Durasi</th>
             <th class="px-5 py-4">Percobaan</th>
             <th class="px-5 py-4">Status</th>
+            <th class="px-5 py-4">Peserta</th>
             <th class="px-5 py-4">Sesi</th>
             <th class="px-5 py-4">Aksi</th>
           </tr>
@@ -194,13 +195,13 @@
         <tbody>
           {#if loading}
             <tr>
-              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
                 Memuat data...
               </td>
             </tr>
           {:else if tryouts.length === 0}
             <tr>
-              <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
                 Belum ada tryout.
               </td>
             </tr>
@@ -258,12 +259,38 @@
                   </div>
                 </td>
 
+                <td class="px-5 py-4">
+                  <p class="font-bold text-slate-900">
+                    {tryout.totalParticipants}
+                    <span class="text-xs font-semibold text-slate-400">
+                      approved
+                    </span>
+                  </p>
+
+                  <p class="text-xs font-semibold text-amber-700">
+                    Pending: {tryout.pendingRequests}
+                  </p>
+
+                  <p class="text-xs font-semibold text-red-600">
+                    Ditolak: {tryout.rejectedParticipants}
+                  </p>
+                </td>
+
                 <td class="px-5 py-4 font-semibold text-slate-700">
                   {tryout.totalSessions}
                 </td>
 
                 <td class="px-5 py-4">
                   <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onclick={() =>
+                        goto(`/teacher/tryouts/${tryout.id}/participants`)}
+                      class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700"
+                    >
+                      Peserta
+                    </button>
+
                     <button
                       type="button"
                       onclick={() =>
