@@ -7,8 +7,10 @@
   import type {
     AdminTryoutResponse,
     MutateTryoutResponse,
+    TryoutStatus,
     UpdateTryoutPayload,
   } from "$lib/types/admin";
+  import { tryoutStatusOptions } from "$lib/types/admin";
 
   type TryoutSubject = Subject & {
     totalAvailableQuestions: number;
@@ -19,6 +21,8 @@
     subjects: TryoutSubject[];
   };
 
+  type MaxAttemptsMode = "LIMITED" | "UNLIMITED";
+
   const id = $derived(page.params.id ?? "");
 
   let subjects = $state<TryoutSubject[]>([]);
@@ -26,6 +30,9 @@
   let title = $state("");
   let totalQuestions = $state(1);
   let durationMinutes = $state(45);
+  let maxAttemptsMode = $state<MaxAttemptsMode>("LIMITED");
+  let maxAttempts = $state(1);
+  let status = $state<TryoutStatus>("OPEN");
 
   let loading = $state(true);
   let saving = $state(false);
@@ -40,9 +47,7 @@
   );
 
   const totalQuestionsError = $derived.by(() => {
-    if (!subjectId) {
-      return "";
-    }
+    if (!subjectId) return "";
 
     if (maximumQuestions === 0) {
       return "Bank soal ini belum memiliki soal.";
@@ -75,12 +80,27 @@
     return "";
   });
 
+  const maxAttemptsError = $derived.by(() => {
+    if (maxAttemptsMode === "UNLIMITED") return "";
+
+    if (!Number.isInteger(maxAttempts)) {
+      return "Batas percobaan harus berupa bilangan bulat.";
+    }
+
+    if (maxAttempts < 1) {
+      return "Batas percobaan minimal 1 kali.";
+    }
+
+    return "";
+  });
+
   const formInvalid = $derived(
     !title.trim() ||
       !subjectId ||
       maximumQuestions === 0 ||
       Boolean(totalQuestionsError) ||
-      Boolean(durationError),
+      Boolean(durationError) ||
+      Boolean(maxAttemptsError),
   );
 
   async function loadPageData() {
@@ -90,19 +110,24 @@
 
     const [subjectsResult, tryoutResult] = await Promise.all([
       apiFetch<TryoutSubjectsResponse>("/admin/subjects"),
-
       apiFetch<AdminTryoutResponse>(`/admin/tryouts/${id}`),
     ]);
 
     subjects = subjectsResult.subjects;
 
     subjectId = tryoutResult.tryout.subjectId;
-
     title = tryoutResult.tryout.title;
-
     totalQuestions = tryoutResult.tryout.totalQuestions;
-
     durationMinutes = tryoutResult.tryout.durationMinutes;
+    status = tryoutResult.tryout.status;
+
+    if (tryoutResult.tryout.maxAttempts === null) {
+      maxAttemptsMode = "UNLIMITED";
+      maxAttempts = 1;
+    } else {
+      maxAttemptsMode = "LIMITED";
+      maxAttempts = tryoutResult.tryout.maxAttempts;
+    }
   }
 
   function handleSubjectChange(event: Event) {
@@ -117,6 +142,25 @@
         ? subject.totalAvailableQuestions
         : 1;
 
+    errorMessage = "";
+  }
+
+  function handleMaxAttemptsModeChange(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+
+    maxAttemptsMode = select.value as MaxAttemptsMode;
+
+    if (maxAttemptsMode === "LIMITED" && maxAttempts < 1) {
+      maxAttempts = 1;
+    }
+
+    errorMessage = "";
+  }
+
+  function handleStatusChange(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+
+    status = select.value as TryoutStatus;
     errorMessage = "";
   }
 
@@ -155,6 +199,11 @@
       return;
     }
 
+    if (maxAttemptsError) {
+      errorMessage = maxAttemptsError;
+      return;
+    }
+
     saving = true;
 
     try {
@@ -163,6 +212,8 @@
         title: title.trim(),
         totalQuestions,
         durationMinutes,
+        maxAttempts: maxAttemptsMode === "UNLIMITED" ? null : maxAttempts,
+        status,
       };
 
       await apiFetch<MutateTryoutResponse>(`/admin/tryouts/${id}`, {
@@ -206,7 +257,9 @@
 
     <h2 class="text-2xl font-bold text-slate-950">Edit Tryout</h2>
 
-    <p class="mt-1 text-sm text-slate-500">Ubah konfigurasi paket tryout.</p>
+    <p class="mt-1 text-sm text-slate-500">
+      Ubah konfigurasi paket tryout, batas percobaan, dan status.
+    </p>
   </div>
 
   {#if loading}
@@ -261,8 +314,7 @@
           {#each subjects as subject}
             <option value={subject.id}>
               {subject.name}
-              ({subject.totalAvailableQuestions}
-              soal)
+              ({subject.totalAvailableQuestions} soal)
             </option>
           {/each}
         </select>
@@ -296,9 +348,8 @@
             </p>
           {:else if selectedSubject}
             <p class="mt-2 text-xs text-slate-500">
-              Bank soal memiliki
-              {maximumQuestions} soal. Jumlah maksimal tryout adalah
-              {maximumQuestions} soal.
+              Bank soal memiliki {maximumQuestions} soal. Jumlah maksimal tryout
+              adalah {maximumQuestions} soal.
             </p>
           {/if}
         </div>
@@ -329,6 +380,79 @@
             </p>
           {/if}
         </div>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <label for="maxAttemptsMode" class="text-sm font-bold text-slate-700">
+            Batas Percobaan
+          </label>
+
+          <select
+            id="maxAttemptsMode"
+            value={maxAttemptsMode}
+            onchange={handleMaxAttemptsModeChange}
+            disabled={saving}
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <option value="LIMITED">Dibatasi</option>
+            <option value="UNLIMITED">Tanpa batas sampai tryout ditutup</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="maxAttempts" class="text-sm font-bold text-slate-700">
+            Maksimal Percobaan
+          </label>
+
+          <input
+            id="maxAttempts"
+            type="number"
+            min="1"
+            step="1"
+            bind:value={maxAttempts}
+            disabled={saving || maxAttemptsMode === "UNLIMITED"}
+            aria-invalid={Boolean(maxAttemptsError)}
+            class={`mt-1 w-full rounded-xl border bg-slate-50 px-4 py-2.5 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              maxAttemptsError
+                ? "border-red-500 ring-2 ring-red-100 focus:border-red-500 focus:bg-white focus:ring-red-100"
+                : "border-slate-200 focus:border-blue-900 focus:bg-white"
+            }`}
+          />
+
+          {#if maxAttemptsError}
+            <p class="mt-2 text-xs font-semibold text-red-600">
+              {maxAttemptsError}
+            </p>
+          {:else}
+            <p class="mt-2 text-xs text-slate-500">
+              Pilih tanpa batas jika siswa boleh mengulang sampai tryout
+              ditutup.
+            </p>
+          {/if}
+        </div>
+      </div>
+
+      <div>
+        <label for="status" class="text-sm font-bold text-slate-700">
+          Status Tryout
+        </label>
+
+        <select
+          id="status"
+          value={status}
+          onchange={handleStatusChange}
+          disabled={saving}
+          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {#each tryoutStatusOptions as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+
+        <p class="mt-2 text-xs text-slate-500">
+          Hanya tryout dengan status dibuka yang terlihat oleh siswa.
+        </p>
       </div>
 
       <div class="flex justify-end gap-3 border-t border-slate-100 pt-5">

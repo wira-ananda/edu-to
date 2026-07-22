@@ -1,12 +1,22 @@
 import type { AnswerOption, DifficultyLevel } from "$lib/types/questions";
+import type { TryoutStatus } from "$lib/types/admin";
 
 export type StudentTryoutItem = {
   id: string;
   title: string;
   totalQuestions: number;
   durationMinutes: number;
+  maxAttempts: number | null;
+  status: TryoutStatus;
+
+  attemptsUsed: number;
+  attemptsRemaining: number | null;
+  canStart: boolean;
+  ongoingSessionId: string | null;
+
   createdAt: string;
   updatedAt: string;
+
   bank: {
     id: string;
     name: string;
@@ -21,6 +31,7 @@ export type StudentTryoutsResponse = {
 
 export type StudentSession = {
   id: string;
+  attemptNumber: number;
   initialLevel: DifficultyLevel;
   currentLevel: DifficultyLevel;
   totalQuestions: number;
@@ -68,6 +79,7 @@ export type NextQuestionResponse = {
   message?: string;
   session?: {
     id: string;
+    attemptNumber: number;
     initialLevel: DifficultyLevel;
     currentLevel: DifficultyLevel;
     totalQuestions: number;
@@ -120,6 +132,7 @@ export type StudentResultResponse = {
   ok: boolean;
   session: {
     id: string;
+    attemptNumber: number;
     tryoutTitle: string;
     bankName: string;
     initialLevel: DifficultyLevel;

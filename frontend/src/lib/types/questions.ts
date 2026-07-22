@@ -1,12 +1,24 @@
+import type { AppRole } from "./users";
+
 export type DifficultyLevel = "LOW" | "MEDIUM" | "HIGH";
 
 export type WeightPriority = "LOW" | "NORMAL" | "HIGH" | "VERY_HIGH";
 
 export type AnswerOption = "A" | "B" | "C" | "D";
 
+export type OwnerSummary = {
+  id: string;
+  name: string;
+  email: string;
+  role: AppRole;
+} | null;
+
 export type Subject = {
   id: string;
   name: string;
+  ownerId?: string | null;
+  owner?: OwnerSummary;
+  totalAvailableQuestions?: number;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -14,6 +26,8 @@ export type Subject = {
 export type QuestionBank = {
   id: string;
   name: string;
+  ownerId?: string | null;
+  owner?: OwnerSummary;
   totalQuestions: number;
   difficultyCounts: {
     LOW: number;
@@ -33,6 +47,9 @@ export type QuestionBank = {
 export type Question = {
   id: string;
   subjectId: string;
+  ownerId?: string | null;
+  owner?: OwnerSummary;
+
   questionText: string;
   optionA: string;
   optionB: string;

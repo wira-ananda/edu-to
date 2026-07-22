@@ -12,12 +12,37 @@
     StartTryoutResponse,
     StudentTryoutItem,
   } from "$lib/types/student";
+  import { getMaxAttemptsLabel } from "$lib/types/admin";
 
   let loading = $state(true);
   let refreshing = $state(false);
   let startingTryoutId = $state("");
   let errorMessage = $state("");
   let tryouts = $state<StudentTryoutItem[]>([]);
+
+  function getAttemptsRemainingLabel(tryout: StudentTryoutItem) {
+    if (tryout.maxAttempts === null) {
+      return "Tanpa batas";
+    }
+
+    return `${tryout.attemptsRemaining ?? 0} tersisa`;
+  }
+
+  function getStartDisabledReason(tryout: StudentTryoutItem) {
+    if (tryout.bank.totalAvailableQuestions < tryout.totalQuestions) {
+      return "Soal tersedia tidak cukup untuk tryout ini.";
+    }
+
+    if (tryout.ongoingSessionId) {
+      return "";
+    }
+
+    if (!tryout.canStart) {
+      return "Batas percobaan untuk tryout ini sudah habis.";
+    }
+
+    return "";
+  }
 
   async function loadTryouts(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
@@ -55,8 +80,13 @@
     }
   }
 
-  async function startTryout(tryoutId: string) {
-    startingTryoutId = tryoutId;
+  async function startTryout(tryout: StudentTryoutItem) {
+    if (tryout.ongoingSessionId) {
+      await goto(`/student/tryouts/${tryout.ongoingSessionId}`);
+      return;
+    }
+
+    startingTryoutId = tryout.id;
     errorMessage = "";
 
     try {
@@ -65,12 +95,13 @@
         {
           method: "POST",
           body: JSON.stringify({
-            tryoutId,
+            tryoutId: tryout.id,
           }),
         },
       );
 
       invalidateStudentSessionsCache();
+      invalidateStudentTryoutsCache();
 
       await goto(`/student/tryouts/${result.session.id}`);
     } catch (error) {
@@ -92,8 +123,9 @@
   >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
+
       <p class="mt-1 text-sm text-slate-500">
-        Pilih paket tryout yang sudah disiapkan admin.
+        Pilih paket tryout yang sudah dibuka oleh admin atau guru.
       </p>
     </div>
 
@@ -128,26 +160,38 @@
       </p>
 
       <p class="mt-2 text-sm text-slate-500">
-        Hubungi admin untuk membuat paket tryout terlebih dahulu.
+        Tryout akan muncul jika statusnya sudah dibuka.
       </p>
     </div>
   {:else}
     <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {#each tryouts as tryout}
+        {@const disabledReason = getStartDisabledReason(tryout)}
+
         <article
           class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
-          <p
-            class="text-sm font-semibold uppercase tracking-wide text-slate-400"
-          >
-            Tryout
-          </p>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p
+                class="text-sm font-semibold uppercase tracking-wide text-slate-400"
+              >
+                Tryout
+              </p>
 
-          <h3 class="mt-1 text-xl font-bold text-slate-950">
-            {tryout.title}
-          </h3>
+              <h3 class="mt-1 text-xl font-bold text-slate-950">
+                {tryout.title}
+              </h3>
+            </div>
 
-          <p class="mt-1 text-sm text-slate-500">
+            <span
+              class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
+            >
+              Dibuka
+            </span>
+          </div>
+
+          <p class="mt-2 text-sm text-slate-500">
             Bank soal: {tryout.bank.name}
           </p>
 
@@ -176,6 +220,52 @@
                 <span class="text-sm font-semibold text-slate-500">menit</span>
               </p>
             </div>
+
+            <div class="rounded-xl bg-slate-50 p-4">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
+              >
+                Percobaan
+              </p>
+
+              <p class="mt-1 text-lg font-bold text-slate-950">
+                {tryout.attemptsUsed}
+                <span class="text-sm font-semibold text-slate-500">
+                  terpakai
+                </span>
+              </p>
+            </div>
+
+            <div class="rounded-xl bg-slate-50 p-4">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
+              >
+                Batas
+              </p>
+
+              <p class="mt-1 text-lg font-bold text-slate-950">
+                {getMaxAttemptsLabel(tryout.maxAttempts)}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <p class="text-xs font-semibold text-slate-600">
+              Sisa percobaan:
+              <span class="font-bold text-slate-950">
+                {getAttemptsRemainingLabel(tryout)}
+              </span>
+            </p>
+
+            {#if tryout.ongoingSessionId}
+              <p class="mt-1 text-xs font-semibold text-amber-700">
+                Ada sesi yang sedang berjalan. Kamu bisa melanjutkannya.
+              </p>
+            {:else if !tryout.canStart}
+              <p class="mt-1 text-xs font-semibold text-red-600">
+                Kamu sudah mencapai batas percobaan.
+              </p>
+            {/if}
           </div>
 
           <p class="mt-4 text-xs text-slate-500">
@@ -183,22 +273,27 @@
             menggunakan Weighted Random Selection.
           </p>
 
-          {#if tryout.bank.totalAvailableQuestions < tryout.totalQuestions}
+          {#if disabledReason}
             <p
               class="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600"
             >
-              Soal tersedia tidak cukup untuk tryout ini.
+              {disabledReason}
             </p>
           {/if}
 
           <button
             type="button"
-            disabled={tryout.bank.totalAvailableQuestions <
-              tryout.totalQuestions || startingTryoutId === tryout.id}
-            onclick={() => startTryout(tryout.id)}
+            disabled={Boolean(disabledReason) || startingTryoutId === tryout.id}
+            onclick={() => startTryout(tryout)}
             class="mt-5 w-full rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {startingTryoutId === tryout.id ? "Memulai..." : "Mulai Tryout"}
+            {#if startingTryoutId === tryout.id}
+              Memulai...
+            {:else if tryout.ongoingSessionId}
+              Lanjutkan Tryout
+            {:else}
+              Mulai Tryout
+            {/if}
           </button>
         </article>
       {/each}

@@ -1,13 +1,15 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import type { Subject } from "$lib/types/questions";
   import type {
-    CreateTryoutPayload,
-    MutateTryoutResponse,
-    TryoutStatus,
-  } from "$lib/types/admin";
+    TeacherMutateTryoutResponse,
+    TeacherTryoutResponse,
+    TeacherUpdateTryoutPayload,
+  } from "$lib/types/teacher";
+  import type { TryoutStatus } from "$lib/types/admin";
   import { tryoutStatusOptions } from "$lib/types/admin";
 
   type TryoutSubject = Subject & {
@@ -20,6 +22,8 @@
   };
 
   type MaxAttemptsMode = "LIMITED" | "UNLIMITED";
+
+  const id = $derived(page.params.id ?? "");
 
   let subjects = $state<TryoutSubject[]>([]);
   let subjectId = $state("");
@@ -44,48 +48,30 @@
 
   const totalQuestionsError = $derived.by(() => {
     if (!subjectId) return "";
-
-    if (maximumQuestions === 0) {
-      return "Bank soal ini belum memiliki soal.";
-    }
-
-    if (!Number.isInteger(totalQuestions)) {
-      return "Jumlah soal harus berupa bilangan bulat.";
-    }
-
-    if (totalQuestions < 1) {
-      return "Jumlah soal minimal 1.";
-    }
-
+    if (maximumQuestions === 0) return "Bank soal ini belum memiliki soal.";
+    if (!Number.isInteger(totalQuestions))
+      return "Jumlah soal harus bilangan bulat.";
+    if (totalQuestions < 1) return "Jumlah soal minimal 1.";
     if (totalQuestions > maximumQuestions) {
-      return `Jumlah soal tidak boleh melebihi ${maximumQuestions} soal yang tersedia.`;
+      return `Jumlah soal tidak boleh melebihi ${maximumQuestions} soal.`;
     }
 
     return "";
   });
 
   const durationError = $derived.by(() => {
-    if (!Number.isInteger(durationMinutes)) {
-      return "Durasi harus berupa bilangan bulat.";
-    }
-
-    if (durationMinutes < 1) {
-      return "Durasi minimal 1 menit.";
-    }
+    if (!Number.isInteger(durationMinutes))
+      return "Durasi harus bilangan bulat.";
+    if (durationMinutes < 1) return "Durasi minimal 1 menit.";
 
     return "";
   });
 
   const maxAttemptsError = $derived.by(() => {
     if (maxAttemptsMode === "UNLIMITED") return "";
-
-    if (!Number.isInteger(maxAttempts)) {
-      return "Batas percobaan harus berupa bilangan bulat.";
-    }
-
-    if (maxAttempts < 1) {
-      return "Batas percobaan minimal 1 kali.";
-    }
+    if (!Number.isInteger(maxAttempts))
+      return "Batas percobaan harus bilangan bulat.";
+    if (maxAttempts < 1) return "Batas percobaan minimal 1 kali.";
 
     return "";
   });
@@ -99,27 +85,32 @@
       Boolean(maxAttemptsError),
   );
 
-  async function loadSubjects() {
-    loading = true;
-    errorMessage = "";
+  async function loadData() {
+    if (!id) {
+      throw new Error("ID tryout tidak valid.");
+    }
 
-    try {
-      const result = await apiFetch<TryoutSubjectsResponse>("/admin/subjects");
+    const [subjectsResult, tryoutResult] = await Promise.all([
+      apiFetch<TryoutSubjectsResponse>("/teacher/subjects"),
+      apiFetch<TeacherTryoutResponse>(`/teacher/tryouts/${id}`),
+    ]);
 
-      subjects = result.subjects;
+    subjects = subjectsResult.subjects;
 
-      const firstSubject = subjects[0] ?? null;
+    const tryout = tryoutResult.tryout;
 
-      if (firstSubject) {
-        subjectId = firstSubject.id;
+    subjectId = tryout.subjectId;
+    title = tryout.title;
+    totalQuestions = tryout.totalQuestions;
+    durationMinutes = tryout.durationMinutes;
+    status = tryout.status;
 
-        totalQuestions =
-          firstSubject.totalAvailableQuestions > 0
-            ? firstSubject.totalAvailableQuestions
-            : 1;
-      }
-    } finally {
-      loading = false;
+    if (tryout.maxAttempts === null) {
+      maxAttemptsMode = "UNLIMITED";
+      maxAttempts = 1;
+    } else {
+      maxAttemptsMode = "LIMITED";
+      maxAttempts = tryout.maxAttempts;
     }
   }
 
@@ -162,40 +153,24 @@
 
     errorMessage = "";
 
-    if (!title.trim()) {
-      errorMessage = "Judul tryout wajib diisi.";
+    if (!id) {
+      errorMessage = "ID tryout tidak valid.";
       return;
     }
 
-    if (!selectedSubject) {
-      errorMessage = "Bank soal wajib dipilih.";
-      return;
-    }
-
-    if (maximumQuestions === 0) {
-      errorMessage = "Bank soal yang dipilih belum memiliki soal.";
-      return;
-    }
-
-    if (totalQuestionsError) {
-      errorMessage = totalQuestionsError;
-      return;
-    }
-
-    if (durationError) {
-      errorMessage = durationError;
-      return;
-    }
-
-    if (maxAttemptsError) {
-      errorMessage = maxAttemptsError;
+    if (formInvalid) {
+      errorMessage =
+        totalQuestionsError ||
+        durationError ||
+        maxAttemptsError ||
+        "Lengkapi data tryout.";
       return;
     }
 
     saving = true;
 
     try {
-      const payload: CreateTryoutPayload = {
+      const payload: TeacherUpdateTryoutPayload = {
         subjectId,
         title: title.trim(),
         totalQuestions,
@@ -204,27 +179,30 @@
         status,
       };
 
-      await apiFetch<MutateTryoutResponse>("/admin/tryouts", {
-        method: "POST",
+      await apiFetch<TeacherMutateTryoutResponse>(`/teacher/tryouts/${id}`, {
+        method: "PUT",
         body: JSON.stringify(payload),
       });
 
-      await goto("/admin/tryouts");
+      await goto("/teacher/tryouts");
     } catch (error) {
       errorMessage =
-        error instanceof Error ? error.message : "Gagal membuat tryout.";
+        error instanceof Error ? error.message : "Gagal memperbarui tryout.";
     } finally {
       saving = false;
     }
   }
 
   onMount(async () => {
+    loading = true;
+    errorMessage = "";
+
     try {
-      await loadSubjects();
+      await loadData();
     } catch (error) {
       errorMessage =
-        error instanceof Error ? error.message : "Gagal memuat bank soal.";
-
+        error instanceof Error ? error.message : "Gagal memuat data tryout.";
+    } finally {
       loading = false;
     }
   });
@@ -234,25 +212,20 @@
   <div>
     <button
       type="button"
-      onclick={() => goto("/admin/tryouts")}
+      onclick={() => goto("/teacher/tryouts")}
       class="mb-3 text-sm font-bold text-blue-900"
     >
       ← Kembali ke Daftar Tryout
     </button>
 
-    <h2 class="text-2xl font-bold text-slate-950">Buat Tryout</h2>
+    <h2 class="text-2xl font-bold text-slate-950">Edit Tryout Guru</h2>
 
-    <p class="mt-1 text-sm text-slate-500">
-      Tentukan bank soal, jumlah soal, durasi, batas percobaan, dan status
-      tryout.
-    </p>
+    <p class="mt-1 text-sm text-slate-500">Ubah konfigurasi tryout milikmu.</p>
   </div>
 
   {#if loading}
-    <div
-      class="rounded-2xl border border-slate-200 bg-white p-8 text-sm font-semibold text-slate-500 shadow-sm"
-    >
-      Memuat bank soal...
+    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+      <p class="text-sm font-semibold text-slate-500">Memuat tryout...</p>
     </div>
   {:else}
     <form
@@ -276,10 +249,8 @@
           id="title"
           type="text"
           bind:value={title}
-          required
           disabled={saving}
-          placeholder="Contoh: Tryout Biologi SMA Paket 1"
-          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
         />
       </div>
 
@@ -293,15 +264,13 @@
           value={subjectId}
           onchange={handleSubjectChange}
           disabled={saving}
-          required
-          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
         >
-          <option value=""> Pilih bank soal </option>
+          <option value="">Pilih bank soal</option>
 
           {#each subjects as subject}
             <option value={subject.id}>
-              {subject.name}
-              ({subject.totalAvailableQuestions} soal)
+              {subject.name} ({subject.totalAvailableQuestions} soal)
             </option>
           {/each}
         </select>
@@ -321,22 +290,12 @@
             step="1"
             bind:value={totalQuestions}
             disabled={saving || !subjectId || maximumQuestions === 0}
-            aria-invalid={Boolean(totalQuestionsError)}
-            class={`mt-1 w-full rounded-xl border bg-slate-50 px-4 py-2.5 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              totalQuestionsError
-                ? "border-red-500 ring-2 ring-red-100 focus:border-red-500 focus:bg-white focus:ring-red-100"
-                : "border-slate-200 focus:border-blue-900 focus:bg-white"
-            }`}
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
           />
 
           {#if totalQuestionsError}
             <p class="mt-2 text-xs font-semibold text-red-600">
               {totalQuestionsError}
-            </p>
-          {:else if selectedSubject}
-            <p class="mt-2 text-xs text-slate-500">
-              Bank soal memiliki {maximumQuestions} soal. Jumlah maksimal tryout
-              adalah {maximumQuestions} soal.
             </p>
           {/if}
         </div>
@@ -353,12 +312,7 @@
             step="1"
             bind:value={durationMinutes}
             disabled={saving}
-            aria-invalid={Boolean(durationError)}
-            class={`mt-1 w-full rounded-xl border bg-slate-50 px-4 py-2.5 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              durationError
-                ? "border-red-500 ring-2 ring-red-100 focus:border-red-500 focus:bg-white focus:ring-red-100"
-                : "border-slate-200 focus:border-blue-900 focus:bg-white"
-            }`}
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
           />
 
           {#if durationError}
@@ -380,7 +334,7 @@
             value={maxAttemptsMode}
             onchange={handleMaxAttemptsModeChange}
             disabled={saving}
-            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
           >
             <option value="LIMITED">Dibatasi</option>
             <option value="UNLIMITED">Tanpa batas sampai tryout ditutup</option>
@@ -399,22 +353,12 @@
             step="1"
             bind:value={maxAttempts}
             disabled={saving || maxAttemptsMode === "UNLIMITED"}
-            aria-invalid={Boolean(maxAttemptsError)}
-            class={`mt-1 w-full rounded-xl border bg-slate-50 px-4 py-2.5 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              maxAttemptsError
-                ? "border-red-500 ring-2 ring-red-100 focus:border-red-500 focus:bg-white focus:ring-red-100"
-                : "border-slate-200 focus:border-blue-900 focus:bg-white"
-            }`}
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
           />
 
           {#if maxAttemptsError}
             <p class="mt-2 text-xs font-semibold text-red-600">
               {maxAttemptsError}
-            </p>
-          {:else}
-            <p class="mt-2 text-xs text-slate-500">
-              Pilih tanpa batas jika siswa boleh mengulang sampai tryout
-              ditutup.
             </p>
           {/if}
         </div>
@@ -430,24 +374,20 @@
           value={status}
           onchange={handleStatusChange}
           disabled={saving}
-          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-900 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
         >
           {#each tryoutStatusOptions as option}
             <option value={option.value}>{option.label}</option>
           {/each}
         </select>
-
-        <p class="mt-2 text-xs text-slate-500">
-          Hanya tryout dengan status dibuka yang terlihat oleh siswa.
-        </p>
       </div>
 
       <div class="flex justify-end gap-3 border-t border-slate-100 pt-5">
         <button
           type="button"
-          onclick={() => goto("/admin/tryouts")}
+          onclick={() => goto("/teacher/tryouts")}
           disabled={saving}
-          class="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+          class="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
         >
           Batal
         </button>
@@ -455,9 +395,9 @@
         <button
           type="submit"
           disabled={saving || formInvalid}
-          class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-950 disabled:cursor-not-allowed disabled:opacity-60"
+          class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
         >
-          {saving ? "Menyimpan..." : "Simpan Tryout"}
+          {saving ? "Menyimpan..." : "Simpan Perubahan"}
         </button>
       </div>
     </form>

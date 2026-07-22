@@ -1,9 +1,23 @@
+export type AppRole = "ADMIN" | "TEACHER" | "STUDENT";
+
+export type AppUser = {
+  id: string;
+  supabaseUserId: string;
+  name: string;
+  email: string;
+  role: AppRole;
+  school: string | null;
+  className: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TeacherAccount = {
   id: string;
   supabaseUserId: string;
   name: string;
   email: string;
-  role: "ADMIN";
+  role: "TEACHER";
   school: string | null;
   createdAt: string;
   updatedAt: string;
@@ -25,4 +39,9 @@ export type MutateTeacherResponse = {
   ok: boolean;
   message: string;
   teacher?: TeacherAccount;
+};
+
+export type MeResponse = {
+  ok: boolean;
+  user: AppUser;
 };

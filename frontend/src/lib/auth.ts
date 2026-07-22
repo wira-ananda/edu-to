@@ -1,22 +1,8 @@
-import { supabase } from "./supabase";
-import { apiFetch } from "./api";
+import { apiFetch } from "$lib/api";
+import { supabase } from "$lib/supabase";
+import type { AppRole, AppUser, MeResponse } from "$lib/types/users";
 
-export type AppRole = "ADMIN" | "STUDENT";
-
-export type AppUser = {
-  id: string;
-  supabaseUserId: string;
-  name: string;
-  email: string;
-  role: AppRole;
-  school?: string | null;
-  className?: string | null;
-};
-
-type MeResponse = {
-  ok: boolean;
-  user: AppUser;
-};
+export type { AppRole, AppUser } from "$lib/types/users";
 
 export async function getCurrentUser() {
   const { data } = await supabase.auth.getSession();
@@ -25,11 +11,27 @@ export async function getCurrentUser() {
     return null;
   }
 
-  const result = await apiFetch<MeResponse>("/me");
+  try {
+    const result = await apiFetch<MeResponse>("/me");
 
-  return result.user;
+    return result.user;
+  } catch {
+    return null;
+  }
 }
 
 export async function logout() {
   await supabase.auth.signOut();
+}
+
+export function getHomePathByRole(role: AppRole) {
+  if (role === "ADMIN") {
+    return "/admin";
+  }
+
+  if (role === "TEACHER") {
+    return "/teacher";
+  }
+
+  return "/student";
 }

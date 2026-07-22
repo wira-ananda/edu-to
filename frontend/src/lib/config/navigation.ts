@@ -37,15 +37,15 @@ export const adminNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    label: "Manajemen Akun",
+    label: "Manajemen Guru",
     items: [
       {
-        label: "Daftar Akun",
+        label: "Daftar Guru",
         href: "/admin/users",
         icon: "user",
       },
       {
-        label: "Buat Akun",
+        label: "Buat Guru",
         href: "/admin/users/new",
         icon: "plus-circle",
       },
@@ -58,6 +58,64 @@ export const adminNavGroups: AppNavGroup[] = [
         label: "Pengaturan",
         href: "/admin/settings",
         icon: "settings",
+      },
+    ],
+  },
+];
+
+export const teacherNavGroups: AppNavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      {
+        label: "Dashboard",
+        href: "/teacher",
+        icon: "dashboard",
+      },
+    ],
+  },
+  {
+    label: "Manajemen Soal",
+    items: [
+      {
+        label: "Bank Soal",
+        href: "/teacher/questions",
+        icon: "book-open",
+      },
+    ],
+  },
+  {
+    label: "Manajemen Tryout",
+    items: [
+      {
+        label: "Daftar Tryout",
+        href: "/teacher/tryouts",
+        icon: "file-text",
+      },
+      {
+        label: "Buat Tryout",
+        href: "/teacher/tryouts/new",
+        icon: "plus-circle",
+      },
+    ],
+  },
+  {
+    label: "Analitik",
+    items: [
+      {
+        label: "Hasil Siswa",
+        href: "/teacher/results",
+        icon: "trophy",
+      },
+    ],
+  },
+  {
+    label: "Akun",
+    items: [
+      {
+        label: "Profil",
+        href: "/teacher/profile",
+        icon: "user",
       },
     ],
   },

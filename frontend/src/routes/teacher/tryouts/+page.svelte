@@ -3,21 +3,19 @@
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import {
-    getAdminTryoutsCached,
-    invalidateAdminTryoutsCache,
-    readAdminTryoutsCache,
-  } from "$lib/cache/admin-page-cache";
-  import type {
-    AdminTryoutItem,
-    MutateTryoutResponse,
-    TryoutStatus,
-    UpdateTryoutStatusPayload,
-  } from "$lib/types/admin";
-  import {
     getMaxAttemptsLabel,
     getTryoutStatusBadgeClass,
     getTryoutStatusLabel,
     tryoutStatusOptions,
+  } from "$lib/types/admin";
+  import type {
+    TeacherMutateTryoutResponse,
+    TeacherTryoutsResponse,
+  } from "$lib/types/teacher";
+  import type {
+    AdminTryoutItem,
+    TryoutStatus,
+    UpdateTryoutStatusPayload,
   } from "$lib/types/admin";
 
   let loading = $state(true);
@@ -27,23 +25,13 @@
   let errorMessage = $state("");
   let tryouts = $state<AdminTryoutItem[]>([]);
 
-  async function loadTryouts(options: { force?: boolean } = {}) {
-    const force = options.force ?? false;
-
+  async function loadTryouts() {
     errorMessage = "";
-
-    const cachedTryouts = !force ? readAdminTryoutsCache() : null;
-
-    if (cachedTryouts) {
-      tryouts = cachedTryouts;
-      loading = false;
-      return;
-    }
-
     loading = tryouts.length === 0;
 
     try {
-      tryouts = await getAdminTryoutsCached({ force });
+      const result = await apiFetch<TeacherTryoutsResponse>("/teacher/tryouts");
+      tryouts = result.tryouts;
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat tryout.";
@@ -54,10 +42,9 @@
 
   async function refreshTryouts() {
     refreshing = true;
-    invalidateAdminTryoutsCache();
 
     try {
-      await loadTryouts({ force: true });
+      await loadTryouts();
     } finally {
       refreshing = false;
     }
@@ -90,17 +77,15 @@
         status: nextStatus,
       };
 
-      await apiFetch<MutateTryoutResponse>(
-        `/admin/tryouts/${tryoutId}/status`,
+      await apiFetch<TeacherMutateTryoutResponse>(
+        `/teacher/tryouts/${tryoutId}/status`,
         {
           method: "PATCH",
           body: JSON.stringify(payload),
         },
       );
 
-      invalidateAdminTryoutsCache();
-
-      await loadTryouts({ force: true });
+      await loadTryouts();
     } catch (error) {
       tryouts = previousTryouts;
 
@@ -122,13 +107,11 @@
     errorMessage = "";
 
     try {
-      await apiFetch(`/admin/tryouts/${id}`, {
+      await apiFetch(`/teacher/tryouts/${id}`, {
         method: "DELETE",
       });
 
-      invalidateAdminTryoutsCache();
-
-      await loadTryouts({ force: true });
+      await loadTryouts();
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus tryout.";
@@ -153,9 +136,10 @@
     class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Daftar Tryout</h2>
+      <h2 class="text-2xl font-bold text-slate-950">Tryout Guru</h2>
+
       <p class="mt-1 text-sm text-slate-500">
-        Kelola paket tryout yang akan dikerjakan siswa.
+        Kelola tryout yang dibuat dari bank soal milikmu.
       </p>
     </div>
 
@@ -171,7 +155,7 @@
 
       <button
         type="button"
-        onclick={() => goto("/admin/tryouts/new")}
+        onclick={() => goto("/teacher/tryouts/new")}
         class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
       >
         + Buat Tryout
@@ -196,13 +180,13 @@
           class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
         >
           <tr>
-            <th class="px-5 py-4">Judul Tryout</th>
+            <th class="px-5 py-4">Judul</th>
             <th class="px-5 py-4">Bank Soal</th>
-            <th class="px-5 py-4">Jumlah Soal</th>
+            <th class="px-5 py-4">Soal</th>
             <th class="px-5 py-4">Durasi</th>
             <th class="px-5 py-4">Percobaan</th>
             <th class="px-5 py-4">Status</th>
-            <th class="px-5 py-4">Sesi Siswa</th>
+            <th class="px-5 py-4">Sesi</th>
             <th class="px-5 py-4">Aksi</th>
           </tr>
         </thead>
@@ -226,12 +210,6 @@
                 <td class="px-5 py-4">
                   <p class="font-bold text-slate-900">{tryout.title}</p>
 
-                  {#if tryout.owner}
-                    <p class="mt-1 text-xs text-slate-500">
-                      Pemilik: {tryout.owner.name}
-                    </p>
-                  {/if}
-
                   <p class="text-xs text-slate-400">
                     {new Date(tryout.createdAt).toLocaleString("id-ID")}
                   </p>
@@ -239,6 +217,7 @@
 
                 <td class="px-5 py-4">
                   <p class="font-semibold text-slate-700">{tryout.bank.name}</p>
+
                   <p class="text-xs text-slate-400">
                     {tryout.bank.totalAvailableQuestions} soal tersedia
                   </p>
@@ -270,7 +249,7 @@
                       value={tryout.status}
                       disabled={updatingStatusId === tryout.id}
                       onchange={(event) => handleStatusChange(tryout.id, event)}
-                      class="w-32 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      class="w-32 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none disabled:opacity-60"
                     >
                       {#each tryoutStatusOptions as option}
                         <option value={option.value}>{option.label}</option>
@@ -287,8 +266,17 @@
                   <div class="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onclick={() => goto(`/admin/tryouts/${tryout.id}/edit`)}
-                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600"
+                      onclick={() =>
+                        goto(`/teacher/results?tryoutId=${tryout.id}`)}
+                      class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700"
+                    >
+                      Hasil
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick={() => goto(`/teacher/tryouts/${tryout.id}/edit`)}
+                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
                     >
                       Edit
                     </button>

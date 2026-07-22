@@ -2,7 +2,7 @@
   import { goto } from "$app/navigation";
   import { supabase } from "$lib/supabase";
   import { apiFetch } from "$lib/api";
-  import type { AppUser } from "$lib/auth";
+  import { getHomePathByRole, type AppUser } from "$lib/auth";
 
   type MeResponse = {
     ok: boolean;
@@ -36,12 +36,9 @@
 
       const result = await apiFetch<MeResponse>("/me");
 
-      if (result.user.role === "ADMIN") {
-        await goto("/admin");
-        return;
-      }
-
-      await goto("/student");
+      await goto(getHomePathByRole(result.user.role), {
+        replaceState: true,
+      });
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : "Login gagal.";
     } finally {
@@ -55,6 +52,7 @@
     class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
   >
     <h1 class="text-2xl font-bold text-slate-900">EduTryout</h1>
+
     <p class="mt-1 text-sm text-slate-500">Login aplikasi tryout</p>
 
     <form class="mt-6 space-y-4" onsubmit={handleLogin}>
@@ -101,14 +99,15 @@
 
     <p class="mt-5 text-center text-sm text-slate-600">
       Belum punya akun?
-      <a href="/register" class="font-semibold text-blue-900"
-        >Daftar sebagai siswa</a
-      >
+      <a href="/register" class="font-semibold text-blue-900">
+        Daftar sebagai siswa
+      </a>
     </p>
 
     <div class="mt-6 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
       <p>Admin: admin@test.com / password123</p>
       <p>Siswa: student@test.com / password123</p>
+      <p>Guru: gunakan akun yang dibuat admin</p>
     </div>
   </section>
 </main>

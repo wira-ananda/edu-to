@@ -18,6 +18,10 @@
     sessions.filter((session) => session.status === "FINISHED"),
   );
 
+  const ongoingSessions = $derived(
+    sessions.filter((session) => session.status === "ONGOING"),
+  );
+
   const totalFinished = $derived(finishedSessions.length);
 
   const averageScore = $derived(
@@ -95,6 +99,7 @@
   >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Hasil Belajar</h2>
+
       <p class="mt-1 text-sm text-slate-500">
         Ringkasan performa dari tryout yang sudah selesai.
       </p>
@@ -125,16 +130,26 @@
       Memuat hasil belajar...
     </div>
   {:else}
-    <div class="grid gap-4 md:grid-cols-4">
+    <div class="grid gap-4 md:grid-cols-5">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Tryout Selesai</p>
+
         <p class="mt-2 text-3xl font-bold text-slate-950">
           {totalFinished}
         </p>
       </div>
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p class="text-sm font-semibold text-slate-500">Sedang Berjalan</p>
+
+        <p class="mt-2 text-3xl font-bold text-amber-700">
+          {ongoingSessions.length}
+        </p>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Rata-rata Nilai</p>
+
         <p class="mt-2 text-3xl font-bold text-blue-900">
           {averageScore}
         </p>
@@ -142,6 +157,7 @@
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Nilai Tertinggi</p>
+
         <p class="mt-2 text-3xl font-bold text-emerald-700">
           {highestScore}
         </p>
@@ -149,6 +165,7 @@
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Benar / Salah</p>
+
         <p class="mt-2 text-3xl font-bold text-slate-950">
           {totalCorrect}
           <span class="text-lg text-slate-400">/</span>
@@ -179,76 +196,83 @@
       <div
         class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
       >
-        <table class="w-full text-left text-sm">
-          <thead
-            class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
-          >
-            <tr>
-              <th class="px-5 py-4">Tryout</th>
-              <th class="px-5 py-4">Bank Soal</th>
-              <th class="px-5 py-4">Nilai</th>
-              <th class="px-5 py-4">Benar</th>
-              <th class="px-5 py-4">Salah</th>
-              <th class="px-5 py-4">Level Awal</th>
-              <th class="px-5 py-4">Level Akhir</th>
-              <th class="px-5 py-4">Aksi</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {#each finishedSessions as session}
-              <tr class="border-t border-slate-100">
-                <td class="px-5 py-4">
-                  <p class="font-bold text-slate-900">
-                    {session.tryout.title}
-                  </p>
-
-                  <p class="text-xs text-slate-400">
-                    {new Date(session.startedAt).toLocaleString("id-ID")}
-                  </p>
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {session.tryout.subject.name}
-                </td>
-
-                <td class="px-5 py-4">
-                  <span
-                    class="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-900"
-                  >
-                    {session.score}
-                  </span>
-                </td>
-
-                <td class="px-5 py-4 font-bold text-emerald-700">
-                  {session.correctCount}
-                </td>
-
-                <td class="px-5 py-4 font-bold text-red-700">
-                  {session.wrongCount}
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {getDifficultyLabel(session.initialLevel)}
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {getDifficultyLabel(session.currentLevel)}
-                </td>
-
-                <td class="px-5 py-4">
-                  <button
-                    type="button"
-                    onclick={() => goto(`/student/results/${session.id}`)}
-                    class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
-                  >
-                    Lihat Detail
-                  </button>
-                </td>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[1100px] text-left text-sm">
+            <thead
+              class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
+            >
+              <tr>
+                <th class="px-5 py-4">Tryout</th>
+                <th class="px-5 py-4">Percobaan</th>
+                <th class="px-5 py-4">Bank Soal</th>
+                <th class="px-5 py-4">Nilai</th>
+                <th class="px-5 py-4">Benar</th>
+                <th class="px-5 py-4">Salah</th>
+                <th class="px-5 py-4">Level Awal</th>
+                <th class="px-5 py-4">Level Akhir</th>
+                <th class="px-5 py-4">Aksi</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {#each finishedSessions as session}
+                <tr class="border-t border-slate-100">
+                  <td class="px-5 py-4">
+                    <p class="font-bold text-slate-900">
+                      {session.tryout.title}
+                    </p>
+
+                    <p class="text-xs text-slate-400">
+                      {new Date(session.startedAt).toLocaleString("id-ID")}
+                    </p>
+                  </td>
+
+                  <td class="px-5 py-4 font-bold text-slate-900">
+                    #{session.attemptNumber}
+                  </td>
+
+                  <td class="px-5 py-4 font-semibold text-slate-700">
+                    {session.tryout.subject.name}
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <span
+                      class="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-900"
+                    >
+                      {session.score}
+                    </span>
+                  </td>
+
+                  <td class="px-5 py-4 font-bold text-emerald-700">
+                    {session.correctCount}
+                  </td>
+
+                  <td class="px-5 py-4 font-bold text-red-700">
+                    {session.wrongCount}
+                  </td>
+
+                  <td class="px-5 py-4 font-semibold text-slate-700">
+                    {getDifficultyLabel(session.initialLevel)}
+                  </td>
+
+                  <td class="px-5 py-4 font-semibold text-slate-700">
+                    {getDifficultyLabel(session.currentLevel)}
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <button
+                      type="button"
+                      onclick={() => goto(`/student/results/${session.id}`)}
+                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                    >
+                      Lihat Detail
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       </div>
     {/if}
   {/if}

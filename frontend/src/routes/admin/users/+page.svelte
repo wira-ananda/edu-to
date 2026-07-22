@@ -93,8 +93,9 @@
   >
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Akun Guru</h2>
+
       <p class="mt-1 text-sm text-slate-500">
-        Kelola akun guru yang dapat mengakses panel admin.
+        Kelola akun guru yang dapat mengakses panel guru.
       </p>
     </div>
 
@@ -183,7 +184,7 @@
                 <span
                   class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-900"
                 >
-                  Guru/Admin
+                  {teacher.role}
                 </span>
               </td>
 
