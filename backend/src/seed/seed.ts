@@ -49,7 +49,7 @@ const users: SeedUser[] = [
     className: null,
   },
   {
-    email: "AlyaPutriRamadhani@test.com",
+    email: "alya.putriramadhani@test.com",
     password: "qazwsx123",
     name: "Alya Putri Ramadhani",
     role: "STUDENT",
@@ -57,7 +57,7 @@ const users: SeedUser[] = [
     className: "X IPA 1",
   },
   {
-    email: "BimaSatriatama@test.com",
+    email: "bima.satriatama@test.com",
     password: "qazwsx123",
     name: "Bima Satriatama",
     role: "STUDENT",
@@ -65,7 +65,7 @@ const users: SeedUser[] = [
     className: "X IPA 2",
   },
   {
-    email: "CitraNabilaAzzahra@test.com",
+    email: "citra.nabilaazzzzahra@test.com",
     password: "qazwsx123",
     name: "Citra Nabila Azzahra",
     role: "STUDENT",
@@ -73,7 +73,7 @@ const users: SeedUser[] = [
     className: "X IPS 1",
   },
   {
-    email: "DimasAdityaPratama@test.com",
+    email: "dimas.aditya.pratama@test.com",
     password: "qazwsx123",
     name: "Dimas Aditya Pratama",
     role: "STUDENT",
@@ -81,7 +81,7 @@ const users: SeedUser[] = [
     className: "X IPA 3",
   },
   {
-    email: "EkaSafiraLestari@test.com",
+    email: "eka.safira.lestari@test.com",
     password: "qazwsx123",
     name: "Eka Safira Lestari",
     role: "STUDENT",
