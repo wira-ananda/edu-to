@@ -35,21 +35,21 @@ const users: SeedUser[] = [
   {
     email: "admin@test.com",
     password: "password123",
-    name: "Nadia Prameswari",
+    name: "Wira Ananda",
     role: "ADMIN",
     school: "EduTryout Indonesia",
     className: null,
   },
   {
-    email: "teacher@test.com",
+    email: "RahmaHakim@test.com",
     password: "password123",
-    name: "Raka Mahendra",
+    name: "Rahmah Hakim, S.Pd",
     role: "TEACHER",
     school: "SMAN 1 Gowa",
     className: null,
   },
   {
-    email: "student@test.com",
+    email: "AlyaPutriRamadhani@test.com",
     password: "password123",
     name: "Alya Putri Ramadhani",
     role: "STUDENT",
@@ -57,7 +57,7 @@ const users: SeedUser[] = [
     className: "X IPA 1",
   },
   {
-    email: "student2@test.com",
+    email: "BimaSatriatama@test.com",
     password: "password123",
     name: "Bima Satriatama",
     role: "STUDENT",
@@ -65,7 +65,7 @@ const users: SeedUser[] = [
     className: "X IPA 2",
   },
   {
-    email: "student3@test.com",
+    email: "CitraNabilaAzzahra@test.com",
     password: "password123",
     name: "Citra Nabila Azzahra",
     role: "STUDENT",
@@ -73,7 +73,7 @@ const users: SeedUser[] = [
     className: "X IPS 1",
   },
   {
-    email: "student4@test.com",
+    email: "DimasAdityaPratama@test.com",
     password: "password123",
     name: "Dimas Aditya Pratama",
     role: "STUDENT",
@@ -81,7 +81,7 @@ const users: SeedUser[] = [
     className: "X IPA 3",
   },
   {
-    email: "student5@test.com",
+    email: "EkaSafiraLestari@test.com",
     password: "password123",
     name: "Eka Safira Lestari",
     role: "STUDENT",

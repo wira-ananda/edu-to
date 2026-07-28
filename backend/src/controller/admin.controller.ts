@@ -543,6 +543,22 @@ async function updateTryoutStatus(c: AdminContext) {
   }
 }
 
+async function regenerateTryoutJoinCode(c: AdminContext) {
+  try {
+    const id = getRequiredParam(c, "id");
+
+    const result = await adminService.regenerateTryoutJoinCode(id);
+
+    return c.json({
+      ok: true,
+      message: "Kode tryout berhasil dibuat ulang.",
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal membuat ulang kode tryout.");
+  }
+}
+
 async function deleteTryout(c: AdminContext) {
   try {
     const id = getRequiredParam(c, "id");
@@ -722,6 +738,7 @@ export default {
   createTryout,
   updateTryout,
   updateTryoutStatus,
+  regenerateTryoutJoinCode,
   deleteTryout,
 
   getTryoutParticipants,

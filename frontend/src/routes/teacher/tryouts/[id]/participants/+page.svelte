@@ -3,6 +3,14 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import {
+    getTeacherTryoutParticipantsCached,
+    invalidateTeacherTryoutParticipantsCache,
+    invalidateTeacherTryoutResultsCache,
+    invalidateTeacherTryoutsCache,
+    invalidateTeacherTryoutStatisticsCache,
+    readTeacherTryoutParticipantsCache,
+  } from "$lib/cache/teacher-page-cache";
   import type {
     EnrollmentStatus,
     TryoutParticipantAttempt,
@@ -27,6 +35,8 @@
   let refreshing = $state(false);
   let enrolling = $state(false);
   let mutatingEnrollmentId = $state("");
+  let copiedCode = $state("");
+
   let errorMessage = $state("");
   let successMessage = $state("");
 
@@ -48,13 +58,17 @@
   );
 
   function formatDate(value: string | null | undefined) {
-    if (!value) return "-";
+    if (!value) {
+      return "-";
+    }
 
     return new Date(value).toLocaleString("id-ID");
   }
 
   function getAttemptStatusLabel(status: "ONGOING" | "FINISHED") {
-    if (status === "FINISHED") return "Selesai";
+    if (status === "FINISHED") {
+      return "Selesai";
+    }
 
     return "Berlangsung";
   }
@@ -72,7 +86,9 @@
   }
 
   function getAttemptScoreLabel(attempt: TryoutParticipantAttempt | null) {
-    if (!attempt) return "-";
+    if (!attempt) {
+      return "-";
+    }
 
     if (attempt.status === "ONGOING") {
       return "Belum selesai";
@@ -81,7 +97,31 @@
     return String(attempt.score);
   }
 
-  async function loadParticipants() {
+  async function copyJoinCode(joinCode: string | null) {
+    if (!joinCode) {
+      return;
+    }
+
+    errorMessage = "";
+
+    try {
+      await navigator.clipboard.writeText(joinCode);
+
+      copiedCode = joinCode;
+
+      window.setTimeout(() => {
+        if (copiedCode === joinCode) {
+          copiedCode = "";
+        }
+      }, 1500);
+    } catch {
+      errorMessage = "Kode tryout gagal disalin.";
+    }
+  }
+
+  async function loadParticipants(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     if (!tryoutId) {
       errorMessage = "Tryout tidak ditemukan.";
       loading = false;
@@ -89,12 +129,24 @@
     }
 
     errorMessage = "";
+
+    const cachedData = !force
+      ? readTeacherTryoutParticipantsCache(tryoutId)
+      : null;
+
+    if (cachedData) {
+      data = cachedData;
+      participants = cachedData.participants;
+      loading = false;
+      return;
+    }
+
     loading = participants.length === 0;
 
     try {
-      const result = await apiFetch<TeacherTryoutParticipantsResponse>(
-        `/teacher/tryouts/${tryoutId}/participants`,
-      );
+      const result = await getTeacherTryoutParticipantsCached(tryoutId, {
+        force,
+      });
 
       data = result;
       participants = result.participants;
@@ -106,12 +158,24 @@
     }
   }
 
+  function invalidateParticipantMutationCaches() {
+    invalidateTeacherTryoutsCache();
+    invalidateTeacherTryoutParticipantsCache(tryoutId);
+    invalidateTeacherTryoutResultsCache(tryoutId);
+    invalidateTeacherTryoutStatisticsCache(tryoutId);
+  }
+
   async function refreshParticipants() {
     refreshing = true;
     successMessage = "";
 
+    invalidateTeacherTryoutsCache();
+    invalidateTeacherTryoutParticipantsCache(tryoutId);
+
     try {
-      await loadParticipants();
+      await loadParticipants({
+        force: true,
+      });
     } finally {
       refreshing = false;
     }
@@ -142,7 +206,11 @@
       successMessage = result.message;
       studentId = "";
 
-      await loadParticipants();
+      invalidateParticipantMutationCaches();
+
+      await loadParticipants({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -168,7 +236,11 @@
 
       successMessage = result.message;
 
-      await loadParticipants();
+      invalidateParticipantMutationCaches();
+
+      await loadParticipants({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menyetujui peserta.";
@@ -180,7 +252,9 @@
   async function rejectEnrollment(enrollmentId: string) {
     const confirmed = confirm("Tolak peserta ini?");
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     mutatingEnrollmentId = enrollmentId;
     errorMessage = "";
@@ -196,7 +270,11 @@
 
       successMessage = result.message;
 
-      await loadParticipants();
+      invalidateParticipantMutationCaches();
+
+      await loadParticipants({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menolak peserta.";
@@ -280,7 +358,7 @@
   {:else}
     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div
-        class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
+        class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
       >
         <div>
           <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
@@ -303,6 +381,44 @@
             <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
               Percobaan: {getMaxAttemptsLabel(tryout.maxAttempts)}
             </span>
+          </div>
+
+          <div
+            class="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3"
+          >
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
+              Kode Join
+            </p>
+
+            {#if tryout.joinCode}
+              <code
+                class="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-bold tracking-[0.18em] text-white"
+              >
+                {tryout.joinCode}
+              </code>
+
+              <span
+                class={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                  tryout.joinCodeEnabled
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-red-50 text-red-600"
+                }`}
+              >
+                {tryout.joinCodeEnabled ? "Aktif" : "Nonaktif"}
+              </span>
+
+              <button
+                type="button"
+                onclick={() => copyJoinCode(tryout.joinCode)}
+                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+              >
+                {copiedCode === tryout.joinCode ? "Tersalin" : "Salin"}
+              </button>
+            {:else}
+              <span class="text-xs font-semibold text-slate-400">
+                Belum memiliki kode
+              </span>
+            {/if}
           </div>
         </div>
 
@@ -431,8 +547,8 @@
                       </p>
 
                       <p class="text-xs text-slate-400">
-                        {participant.student.school ?? "-"} · {participant
-                          .student.className ?? "-"}
+                        {participant.student.school ?? "-"} ·
+                        {participant.student.className ?? "-"}
                       </p>
 
                       <p class="mt-1 text-[11px] font-semibold text-slate-400">

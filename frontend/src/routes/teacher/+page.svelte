@@ -1,7 +1,14 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { apiFetch } from "$lib/api";
+  import {
+    getTeacherQuestionBanksCached,
+    getTeacherQuestionsCached,
+    getTeacherTryoutsCached,
+    readTeacherQuestionBanksCache,
+    readTeacherQuestionsCache,
+    readTeacherTryoutsCache,
+  } from "$lib/cache/teacher-page-cache";
   import type {
     TeacherQuestionBanksResponse,
     TeacherQuestionsResponse,
@@ -16,23 +23,40 @@
   let totalTryouts = $state(0);
   let openTryouts = $state(0);
 
+  function applyDashboardData(
+    banks: TeacherQuestionBanksResponse["banks"],
+    questions: TeacherQuestionsResponse["questions"],
+    tryouts: TeacherTryoutsResponse["tryouts"],
+  ) {
+    totalBanks = banks.length;
+    totalQuestions = questions.length;
+    totalTryouts = tryouts.length;
+    openTryouts = tryouts.filter((tryout) => tryout.status === "OPEN").length;
+  }
+
   async function loadDashboard() {
-    loading = true;
     errorMessage = "";
 
+    const cachedBanks = readTeacherQuestionBanksCache();
+    const cachedQuestions = readTeacherQuestionsCache();
+    const cachedTryouts = readTeacherTryoutsCache();
+
+    if (cachedBanks && cachedQuestions && cachedTryouts) {
+      applyDashboardData(cachedBanks, cachedQuestions, cachedTryouts);
+      loading = false;
+      return;
+    }
+
+    loading = !cachedBanks && !cachedQuestions && !cachedTryouts;
+
     try {
-      const [banksResult, questionsResult, tryoutsResult] = await Promise.all([
-        apiFetch<TeacherQuestionBanksResponse>("/teacher/question-banks"),
-        apiFetch<TeacherQuestionsResponse>("/teacher/questions"),
-        apiFetch<TeacherTryoutsResponse>("/teacher/tryouts"),
+      const [banks, questions, tryouts] = await Promise.all([
+        getTeacherQuestionBanksCached(),
+        getTeacherQuestionsCached(),
+        getTeacherTryoutsCached(),
       ]);
 
-      totalBanks = banksResult.banks.length;
-      totalQuestions = questionsResult.questions.length;
-      totalTryouts = tryoutsResult.tryouts.length;
-      openTryouts = tryoutsResult.tryouts.filter(
-        (tryout) => tryout.status === "OPEN",
-      ).length;
+      applyDashboardData(banks, questions, tryouts);
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat dashboard.";
@@ -71,22 +95,34 @@
     <div class="grid gap-4 md:grid-cols-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Bank Soal</p>
-        <p class="mt-2 text-3xl font-black text-slate-950">{totalBanks}</p>
+
+        <p class="mt-2 text-3xl font-black text-slate-950">
+          {totalBanks}
+        </p>
       </div>
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Total Soal</p>
-        <p class="mt-2 text-3xl font-black text-blue-900">{totalQuestions}</p>
+
+        <p class="mt-2 text-3xl font-black text-blue-900">
+          {totalQuestions}
+        </p>
       </div>
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Total Tryout</p>
-        <p class="mt-2 text-3xl font-black text-slate-950">{totalTryouts}</p>
+
+        <p class="mt-2 text-3xl font-black text-slate-950">
+          {totalTryouts}
+        </p>
       </div>
 
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-semibold text-slate-500">Tryout Dibuka</p>
-        <p class="mt-2 text-3xl font-black text-emerald-700">{openTryouts}</p>
+
+        <p class="mt-2 text-3xl font-black text-emerald-700">
+          {openTryouts}
+        </p>
       </div>
     </div>
 
@@ -97,6 +133,7 @@
         class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
       >
         <p class="text-lg font-bold text-slate-950">Kelola Bank Soal</p>
+
         <p class="mt-2 text-sm text-slate-500">
           Buat bank soal dan tambah soal milikmu.
         </p>
@@ -108,6 +145,7 @@
         class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
       >
         <p class="text-lg font-bold text-slate-950">Buat Tryout</p>
+
         <p class="mt-2 text-sm text-slate-500">
           Atur jumlah soal, durasi, percobaan, dan status tryout.
         </p>
@@ -119,6 +157,7 @@
         class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
       >
         <p class="text-lg font-bold text-slate-950">Lihat Hasil Siswa</p>
+
         <p class="mt-2 text-sm text-slate-500">
           Pantau nilai dan progress siswa pada tryout milikmu.
         </p>

@@ -558,6 +558,23 @@ async function updateTryoutStatus(c: TeacherContext) {
   }
 }
 
+async function regenerateTryoutJoinCode(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const result = await teacherService.regenerateTryoutJoinCode(user.id, id);
+
+    return c.json({
+      ok: true,
+      message: "Kode tryout berhasil dibuat ulang.",
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal membuat ulang kode tryout.");
+  }
+}
+
 async function deleteTryout(c: TeacherContext) {
   try {
     const user = c.get("user");
@@ -747,6 +764,7 @@ export default {
   createTryout,
   updateTryout,
   updateTryoutStatus,
+  regenerateTryoutJoinCode,
   deleteTryout,
 
   getTryoutParticipants,

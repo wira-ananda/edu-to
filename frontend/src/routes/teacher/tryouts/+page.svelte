@@ -3,35 +3,71 @@
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import {
+    getTeacherTryoutsCached,
+    invalidateTeacherTryoutDetailCache,
+    invalidateTeacherTryoutRelatedCaches,
+    invalidateTeacherTryoutsCache,
+    readTeacherTryoutsCache,
+  } from "$lib/cache/teacher-page-cache";
+  import {
     getMaxAttemptsLabel,
     getTryoutStatusBadgeClass,
     getTryoutStatusLabel,
     tryoutStatusOptions,
   } from "$lib/types/admin";
   import type {
-    TeacherMutateTryoutResponse,
-    TeacherTryoutsResponse,
-  } from "$lib/types/teacher";
-  import type {
     AdminTryoutItem,
     TryoutStatus,
     UpdateTryoutStatusPayload,
   } from "$lib/types/admin";
+  import type {
+    TeacherMutateTryoutResponse,
+    TeacherRegenerateTryoutJoinCodeResponse,
+  } from "$lib/types/teacher";
 
   let loading = $state(true);
   let refreshing = $state(false);
   let deletingId = $state("");
   let updatingStatusId = $state("");
+  let regeneratingCodeId = $state("");
+  let copiedCode = $state("");
+
   let errorMessage = $state("");
+  let successMessage = $state("");
+
   let tryouts = $state<AdminTryoutItem[]>([]);
 
-  async function loadTryouts() {
+  function isValidTryoutCache(cachedTryouts: AdminTryoutItem[]) {
+    return cachedTryouts.every(
+      (tryout) =>
+        "totalEnrollments" in tryout &&
+        "totalParticipants" in tryout &&
+        "pendingRequests" in tryout &&
+        "rejectedParticipants" in tryout &&
+        "joinCode" in tryout &&
+        "joinCodeEnabled" in tryout,
+    );
+  }
+
+  async function loadTryouts(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
+
+    const cachedTryouts = !force ? readTeacherTryoutsCache() : null;
+
+    if (cachedTryouts && isValidTryoutCache(cachedTryouts)) {
+      tryouts = cachedTryouts;
+      loading = false;
+      return;
+    }
+
     loading = tryouts.length === 0;
 
     try {
-      const result = await apiFetch<TeacherTryoutsResponse>("/teacher/tryouts");
-      tryouts = result.tryouts;
+      tryouts = await getTeacherTryoutsCached({
+        force: force || Boolean(cachedTryouts),
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat tryout.";
@@ -42,9 +78,14 @@
 
   async function refreshTryouts() {
     refreshing = true;
+    successMessage = "";
+
+    invalidateTeacherTryoutsCache();
 
     try {
-      await loadTryouts();
+      await loadTryouts({
+        force: true,
+      });
     } finally {
       refreshing = false;
     }
@@ -56,15 +97,20 @@
   ) {
     const currentTryout = tryouts.find((tryout) => tryout.id === tryoutId);
 
-    if (!currentTryout || currentTryout.status === nextStatus) return;
+    if (!currentTryout || currentTryout.status === nextStatus) {
+      return;
+    }
 
     updatingStatusId = tryoutId;
     errorMessage = "";
+    successMessage = "";
 
     const previousTryouts = tryouts;
 
     tryouts = tryouts.map((tryout) => {
-      if (tryout.id !== tryoutId) return tryout;
+      if (tryout.id !== tryoutId) {
+        return tryout;
+      }
 
       return {
         ...tryout,
@@ -77,7 +123,7 @@
         status: nextStatus,
       };
 
-      await apiFetch<TeacherMutateTryoutResponse>(
+      const result = await apiFetch<TeacherMutateTryoutResponse>(
         `/teacher/tryouts/${tryoutId}/status`,
         {
           method: "PATCH",
@@ -85,7 +131,14 @@
         },
       );
 
-      await loadTryouts();
+      successMessage = result.message;
+
+      invalidateTeacherTryoutsCache();
+      invalidateTeacherTryoutDetailCache(tryoutId);
+
+      await loadTryouts({
+        force: true,
+      });
     } catch (error) {
       tryouts = previousTryouts;
 
@@ -98,20 +151,90 @@
     }
   }
 
+  async function regenerateJoinCode(tryoutId: string) {
+    const confirmed = confirm(
+      "Buat ulang kode tryout? Kode lama tidak akan dapat digunakan lagi.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    regeneratingCodeId = tryoutId;
+    errorMessage = "";
+    successMessage = "";
+
+    try {
+      const result = await apiFetch<TeacherRegenerateTryoutJoinCodeResponse>(
+        `/teacher/tryouts/${tryoutId}/join-code/regenerate`,
+        {
+          method: "PATCH",
+        },
+      );
+
+      successMessage = result.message;
+
+      invalidateTeacherTryoutsCache();
+      invalidateTeacherTryoutDetailCache(tryoutId);
+
+      await loadTryouts({
+        force: true,
+      });
+    } catch (error) {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Gagal membuat ulang kode tryout.";
+    } finally {
+      regeneratingCodeId = "";
+    }
+  }
+
+  async function copyJoinCode(joinCode: string | null) {
+    if (!joinCode) {
+      return;
+    }
+
+    errorMessage = "";
+
+    try {
+      await navigator.clipboard.writeText(joinCode);
+
+      copiedCode = joinCode;
+
+      window.setTimeout(() => {
+        if (copiedCode === joinCode) {
+          copiedCode = "";
+        }
+      }, 1500);
+    } catch {
+      errorMessage = "Kode tryout gagal disalin.";
+    }
+  }
+
   async function deleteTryout(id: string) {
     const confirmed = confirm("Hapus tryout ini?");
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     deletingId = id;
     errorMessage = "";
+    successMessage = "";
 
     try {
       await apiFetch(`/teacher/tryouts/${id}`, {
         method: "DELETE",
       });
 
-      await loadTryouts();
+      successMessage = "Tryout berhasil dihapus.";
+
+      invalidateTeacherTryoutRelatedCaches(id);
+
+      await loadTryouts({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus tryout.";
@@ -139,7 +262,7 @@
       <h2 class="text-2xl font-bold text-slate-950">Tryout Guru</h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Kelola tryout yang dibuat dari bank soal milikmu.
+        Kelola tryout, peserta, dan kode bergabung dari bank soal milikmu.
       </p>
     </div>
 
@@ -171,11 +294,19 @@
     </p>
   {/if}
 
+  {#if successMessage}
+    <p
+      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    >
+      {successMessage}
+    </p>
+  {/if}
+
   <div
     class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
   >
     <div class="overflow-x-auto">
-      <table class="w-full min-w-[1180px] text-left text-sm">
+      <table class="w-full min-w-[1400px] text-left text-sm">
         <thead
           class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
         >
@@ -186,6 +317,7 @@
             <th class="px-5 py-4">Durasi</th>
             <th class="px-5 py-4">Percobaan</th>
             <th class="px-5 py-4">Status</th>
+            <th class="px-5 py-4">Kode Join</th>
             <th class="px-5 py-4">Peserta</th>
             <th class="px-5 py-4">Sesi</th>
             <th class="px-5 py-4">Aksi</th>
@@ -195,19 +327,19 @@
         <tbody>
           {#if loading}
             <tr>
-              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="10" class="px-5 py-10 text-center text-slate-500">
                 Memuat data...
               </td>
             </tr>
           {:else if tryouts.length === 0}
             <tr>
-              <td colspan="9" class="px-5 py-10 text-center text-slate-500">
+              <td colspan="10" class="px-5 py-10 text-center text-slate-500">
                 Belum ada tryout.
               </td>
             </tr>
           {:else}
             {#each tryouts as tryout}
-              <tr class="border-t border-slate-100">
+              <tr class="border-t border-slate-100 align-top">
                 <td class="px-5 py-4">
                   <p class="font-bold text-slate-900">{tryout.title}</p>
 
@@ -256,6 +388,55 @@
                         <option value={option.value}>{option.label}</option>
                       {/each}
                     </select>
+                  </div>
+                </td>
+
+                <td class="px-5 py-4">
+                  <div class="min-w-40 space-y-2">
+                    {#if tryout.joinCode}
+                      <div class="flex flex-wrap items-center gap-2">
+                        <code
+                          class="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-bold tracking-[0.18em] text-white"
+                        >
+                          {tryout.joinCode}
+                        </code>
+
+                        <span
+                          class={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                            tryout.joinCodeEnabled
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-red-50 text-red-600"
+                          }`}
+                        >
+                          {tryout.joinCodeEnabled ? "Aktif" : "Nonaktif"}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onclick={() => copyJoinCode(tryout.joinCode)}
+                        class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600"
+                      >
+                        {copiedCode === tryout.joinCode
+                          ? "Tersalin"
+                          : "Salin kode"}
+                      </button>
+                    {:else}
+                      <p class="text-xs font-semibold text-slate-400">
+                        Belum memiliki kode
+                      </p>
+                    {/if}
+
+                    <button
+                      type="button"
+                      disabled={regeneratingCodeId === tryout.id}
+                      onclick={() => regenerateJoinCode(tryout.id)}
+                      class="block rounded-lg border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-700 disabled:opacity-50"
+                    >
+                      {regeneratingCodeId === tryout.id
+                        ? "Membuat..."
+                        : "Buat ulang kode"}
+                    </button>
                   </div>
                 </td>
 

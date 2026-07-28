@@ -143,6 +143,11 @@ model Tryout {
 
   status TryoutStatus @default(OPEN)
 
+  // Join code is generated once when a tryout is created.
+  // It stays the same until admin/teacher regenerates it manually.
+  joinCode        String? @unique
+  joinCodeEnabled Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -155,6 +160,7 @@ model Tryout {
   @@index([subjectId])
   @@index([ownerId])
   @@index([status])
+  @@index([joinCodeEnabled])
 }
 
 model TryoutEnrollment {

@@ -45,6 +45,24 @@ function getRequiredParam(c: StudentContext, key: string) {
   return value;
 }
 
+function getRequiredStringBodyValue(
+  body: unknown,
+  key: string,
+  message: string,
+) {
+  if (!body || typeof body !== "object") {
+    throw new StudentServiceError(message, 400);
+  }
+
+  const value = (body as Record<string, unknown>)[key];
+
+  if (typeof value !== "string") {
+    throw new StudentServiceError(message, 400);
+  }
+
+  return value;
+}
+
 function handleError(c: StudentContext, error: unknown, fallback?: string) {
   return c.json(
     {
@@ -110,6 +128,28 @@ async function requestJoinTryout(c: StudentContext) {
     });
   } catch (error) {
     return handleError(c, error, "Gagal mengirim permintaan gabung tryout.");
+  }
+}
+
+async function joinTryoutByCode(c: StudentContext) {
+  try {
+    const user = c.get("user");
+    const body = await c.req.json().catch(() => null);
+
+    const code = getRequiredStringBodyValue(
+      body,
+      "code",
+      "Kode tryout wajib dikirim.",
+    );
+
+    const result = await studentService.joinTryoutByCode(user.id, code);
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal bergabung menggunakan kode tryout.");
   }
 }
 
@@ -246,6 +286,7 @@ export default {
   check,
   getTryouts,
   requestJoinTryout,
+  joinTryoutByCode,
   startTryout,
   getSessions,
   getNextQuestion,
