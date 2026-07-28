@@ -1,4 +1,5 @@
-import type { Prisma } from "@prisma/client";
+import { randomInt } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import {
   classifyQuestionDifficulty,
@@ -34,6 +35,10 @@ export class AdminServiceError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const JOIN_CODE_LENGTH = 6;
+const MAX_JOIN_CODE_ATTEMPTS = 30;
 
 const ownerSelect = {
   id: true,
@@ -85,6 +90,24 @@ function getErrorMessage(error: unknown) {
   }
 
   return "Terjadi kesalahan pada server.";
+}
+
+function generateJoinCodeCandidate() {
+  let code = "";
+
+  for (let index = 0; index < JOIN_CODE_LENGTH; index += 1) {
+    const randomIndex = randomInt(0, JOIN_CODE_ALPHABET.length);
+    code += JOIN_CODE_ALPHABET.charAt(randomIndex);
+  }
+
+  return code;
+}
+
+function isJoinCodeUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
 function calculateAverageScore(scores: number[]) {
@@ -292,6 +315,11 @@ async function createSubject(currentAdminId: string, input: AdminSubjectInput) {
     where: {
       name: input.name,
       ownerId: ownerValidation.ownerId,
+    },
+    include: {
+      owner: {
+        select: ownerSelect,
+      },
     },
   });
 
@@ -805,6 +833,8 @@ async function getTryouts(query: { status?: string; ownerId?: string }) {
         durationMinutes: tryout.durationMinutes,
         maxAttempts: tryout.maxAttempts,
         status: tryout.status,
+        joinCode: tryout.joinCode,
+        joinCodeEnabled: tryout.joinCodeEnabled,
         createdAt: tryout.createdAt,
         updatedAt: tryout.updatedAt,
         bank: {
@@ -881,6 +911,8 @@ async function getTryoutById(id: string) {
       durationMinutes: tryout.durationMinutes,
       maxAttempts: tryout.maxAttempts,
       status: tryout.status,
+      joinCode: tryout.joinCode,
+      joinCodeEnabled: tryout.joinCodeEnabled,
       createdAt: tryout.createdAt,
       updatedAt: tryout.updatedAt,
       bank: {
@@ -907,27 +939,46 @@ async function createTryout(input: AdminTryoutInput) {
     throw new AdminServiceError(validation.message, 400);
   }
 
-  const tryout = await prisma.tryout.create({
-    data: {
-      subjectId: input.subjectId,
-      ownerId: validation.subject.ownerId,
-      title: input.title,
-      totalQuestions: input.totalQuestions,
-      durationMinutes: input.durationMinutes,
-      maxAttempts: input.maxAttempts,
-      status: input.status,
-    },
-    include: {
-      subject: true,
-      owner: {
-        select: ownerSelect,
-      },
-    },
-  });
+  for (let attempt = 0; attempt < MAX_JOIN_CODE_ATTEMPTS; attempt += 1) {
+    const joinCode = generateJoinCodeCandidate();
 
-  return {
-    tryout,
-  };
+    try {
+      const tryout = await prisma.tryout.create({
+        data: {
+          subjectId: input.subjectId,
+          ownerId: validation.subject.ownerId,
+          title: input.title,
+          totalQuestions: input.totalQuestions,
+          durationMinutes: input.durationMinutes,
+          maxAttempts: input.maxAttempts,
+          status: input.status,
+          joinCode,
+          joinCodeEnabled: true,
+        },
+        include: {
+          subject: true,
+          owner: {
+            select: ownerSelect,
+          },
+        },
+      });
+
+      return {
+        tryout,
+      };
+    } catch (error) {
+      if (isJoinCodeUniqueConstraintError(error)) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new AdminServiceError(
+    "Gagal membuat kode tryout yang unik. Silakan coba kembali.",
+    500,
+  );
 }
 
 async function updateTryout(id: string, input: AdminTryoutInput) {
@@ -999,6 +1050,51 @@ async function updateTryoutStatus(id: string, input: AdminTryoutStatusInput) {
   return {
     tryout,
   };
+}
+
+async function regenerateTryoutJoinCode(id: string) {
+  const existingTryout = await assertTryoutExists(id);
+
+  for (let attempt = 0; attempt < MAX_JOIN_CODE_ATTEMPTS; attempt += 1) {
+    const joinCode = generateJoinCodeCandidate();
+
+    if (joinCode === existingTryout.joinCode) {
+      continue;
+    }
+
+    try {
+      const tryout = await prisma.tryout.update({
+        where: {
+          id: existingTryout.id,
+        },
+        data: {
+          joinCode,
+          joinCodeEnabled: true,
+        },
+        include: {
+          subject: true,
+          owner: {
+            select: ownerSelect,
+          },
+        },
+      });
+
+      return {
+        tryout,
+      };
+    } catch (error) {
+      if (isJoinCodeUniqueConstraintError(error)) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new AdminServiceError(
+    "Gagal membuat kode tryout baru yang unik. Silakan coba kembali.",
+    500,
+  );
 }
 
 async function deleteTryout(id: string) {
@@ -1136,6 +1232,8 @@ async function getTryoutParticipants(id: string) {
       title: tryout.title,
       maxAttempts: tryout.maxAttempts,
       status: tryout.status,
+      joinCode: tryout.joinCode,
+      joinCodeEnabled: tryout.joinCodeEnabled,
     },
     summary: {
       totalParticipants: participants.filter(
@@ -1444,9 +1542,11 @@ async function getTryoutStatistics(id: string) {
   const scores = finishedSessions.map((session) => session.score);
 
   const totalParticipants = approvedEnrollments.length;
+
   const pendingRequests = enrollments.filter(
     (enrollment) => enrollment.status === "PENDING",
   ).length;
+
   const rejectedParticipants = enrollments.filter(
     (enrollment) => enrollment.status === "REJECTED",
   ).length;
@@ -1532,6 +1632,7 @@ async function getTryoutStatistics(id: string) {
     const firstAverage = progressCurve[0]?.averageScore ?? 0;
     const lastAverage =
       progressCurve[progressCurve.length - 1]?.averageScore ?? 0;
+
     const diff = lastAverage - firstAverage;
 
     if (diff >= 5) {
@@ -1589,6 +1690,8 @@ async function getTryoutStatistics(id: string) {
       totalQuestions: tryout.totalQuestions,
       durationMinutes: tryout.durationMinutes,
       status: tryout.status,
+      joinCode: tryout.joinCode,
+      joinCodeEnabled: tryout.joinCodeEnabled,
     },
     summary: {
       totalParticipants,
@@ -1629,6 +1732,7 @@ export default {
   createTryout,
   updateTryout,
   updateTryoutStatus,
+  regenerateTryoutJoinCode,
   deleteTryout,
 
   getTryoutParticipants,

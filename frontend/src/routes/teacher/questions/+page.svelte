@@ -3,6 +3,18 @@
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
   import {
+    getTeacherQuestionBanksCached,
+    getTeacherQuestionsCached,
+    getTeacherSubjectsCached,
+    invalidateTeacherQuestionBanksCache,
+    invalidateTeacherQuestionDataCaches,
+    invalidateTeacherQuestionsCache,
+    invalidateTeacherSubjectsCache,
+    readTeacherQuestionBanksCache,
+    readTeacherQuestionsCache,
+    readTeacherSubjectsCache,
+  } from "$lib/cache/teacher-page-cache";
+  import {
     getDifficultyBadgeClass,
     getDifficultyLabel,
     getWeightPriorityLabel,
@@ -18,6 +30,7 @@
   let deletingId = $state("");
   let creatingSubject = $state(false);
   let errorMessage = $state("");
+  let successMessage = $state("");
 
   let newSubjectName = $state("");
   let subjectFilter = $state("");
@@ -27,25 +40,58 @@
   let subjects = $state<TeacherSubjectsResponse["subjects"]>([]);
 
   const filteredQuestions = $derived.by(() => {
-    if (!subjectFilter) return questions;
+    if (!subjectFilter) {
+      return questions;
+    }
 
     return questions.filter((question) => question.subjectId === subjectFilter);
   });
 
-  async function loadData() {
+  async function loadData(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
     errorMessage = "";
-    loading = questions.length === 0;
+
+    const cachedBanks = !force ? readTeacherQuestionBanksCache() : null;
+    const cachedQuestions = !force ? readTeacherQuestionsCache() : null;
+    const cachedSubjects = !force ? readTeacherSubjectsCache() : null;
+
+    if (cachedBanks) {
+      banks = cachedBanks;
+    }
+
+    if (cachedQuestions) {
+      questions = cachedQuestions;
+    }
+
+    if (cachedSubjects) {
+      subjects = cachedSubjects;
+    }
+
+    if (cachedBanks && cachedQuestions && cachedSubjects) {
+      loading = false;
+      return;
+    }
+
+    loading =
+      banks.length === 0 && questions.length === 0 && subjects.length === 0;
 
     try {
-      const [banksResult, questionsResult, subjectsResult] = await Promise.all([
-        apiFetch<TeacherQuestionBanksResponse>("/teacher/question-banks"),
-        apiFetch<TeacherQuestionsResponse>("/teacher/questions"),
-        apiFetch<TeacherSubjectsResponse>("/teacher/subjects"),
+      const [nextBanks, nextQuestions, nextSubjects] = await Promise.all([
+        getTeacherQuestionBanksCached({
+          force,
+        }),
+        getTeacherQuestionsCached({
+          force,
+        }),
+        getTeacherSubjectsCached({
+          force,
+        }),
       ]);
 
-      banks = banksResult.banks;
-      questions = questionsResult.questions;
-      subjects = subjectsResult.subjects;
+      banks = nextBanks;
+      questions = nextQuestions;
+      subjects = nextSubjects;
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat bank soal.";
@@ -56,9 +102,16 @@
 
   async function refreshData() {
     refreshing = true;
+    successMessage = "";
+
+    invalidateTeacherQuestionBanksCache();
+    invalidateTeacherQuestionsCache();
+    invalidateTeacherSubjectsCache();
 
     try {
-      await loadData();
+      await loadData({
+        force: true,
+      });
     } finally {
       refreshing = false;
     }
@@ -76,6 +129,7 @@
 
     creatingSubject = true;
     errorMessage = "";
+    successMessage = "";
 
     try {
       await apiFetch("/teacher/subjects", {
@@ -86,6 +140,11 @@
       });
 
       newSubjectName = "";
+      successMessage = "Bank soal berhasil dibuat.";
+
+      invalidateTeacherQuestionBanksCache();
+      invalidateTeacherSubjectsCache();
+
       await loadData();
     } catch (error) {
       errorMessage =
@@ -98,15 +157,22 @@
   async function deleteQuestion(id: string) {
     const confirmed = confirm("Hapus soal ini?");
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     deletingId = id;
     errorMessage = "";
+    successMessage = "";
 
     try {
       await apiFetch(`/teacher/questions/${id}`, {
         method: "DELETE",
       });
+
+      successMessage = "Soal berhasil dihapus.";
+
+      invalidateTeacherQuestionDataCaches(id);
 
       await loadData();
     } catch (error) {
@@ -162,6 +228,14 @@
     </p>
   {/if}
 
+  {#if successMessage}
+    <p
+      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    >
+      {successMessage}
+    </p>
+  {/if}
+
   <form
     class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-[1fr_auto]"
     onsubmit={createSubject}
@@ -201,9 +275,10 @@
           <p class="text-lg font-bold text-slate-950">{bank.name}</p>
 
           <p class="mt-2 text-sm text-slate-500">
-            Total soal: <span class="font-bold text-slate-950"
-              >{bank.totalQuestions}</span
-            >
+            Total soal:
+            <span class="font-bold text-slate-950">
+              {bank.totalQuestions}
+            </span>
           </p>
 
           <div class="mt-4 grid grid-cols-3 gap-2 text-center text-xs">

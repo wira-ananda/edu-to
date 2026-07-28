@@ -9,6 +9,7 @@
     readStudentTryoutsCache,
   } from "$lib/cache/student-page-cache";
   import type {
+    JoinTryoutByCodeResponse,
     RequestJoinTryoutResponse,
     StartTryoutResponse,
     StudentTryoutItem,
@@ -21,10 +22,14 @@
 
   let loading = $state(true);
   let refreshing = $state(false);
+  let joiningByCode = $state(false);
   let startingTryoutId = $state("");
   let requestingJoinTryoutId = $state("");
+
+  let joinCode = $state("");
   let errorMessage = $state("");
   let successMessage = $state("");
+
   let tryouts = $state<StudentTryoutItem[]>([]);
 
   function isValidEnrollmentCache(cachedTryouts: StudentTryoutItem[]) {
@@ -68,7 +73,7 @@
       return "Permintaanmu ditolak. Hubungi guru atau admin jika perlu.";
     }
 
-    return "Kamu perlu meminta akses sebelum bisa mengerjakan tryout ini.";
+    return "Gunakan kode tryout atau kirim permintaan akses untuk bergabung.";
   }
 
   function getStartDisabledReason(tryout: StudentTryoutItem) {
@@ -119,6 +124,15 @@
     return "Mulai Tryout";
   }
 
+  function handleJoinCodeInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+
+    joinCode = input.value
+      .toUpperCase()
+      .replace(/\s+/g, "")
+      .replace(/[^A-Z0-9]/g, "");
+  }
+
   async function loadTryouts(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
 
@@ -135,7 +149,9 @@
     loading = tryouts.length === 0;
 
     try {
-      tryouts = await getStudentTryoutsCached({ force: true });
+      tryouts = await getStudentTryoutsCached({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat daftar tryout.";
@@ -146,12 +162,59 @@
 
   async function refreshTryouts() {
     refreshing = true;
+    successMessage = "";
+
     invalidateStudentTryoutsCache();
 
     try {
-      await loadTryouts({ force: true });
+      await loadTryouts({
+        force: true,
+      });
     } finally {
       refreshing = false;
+    }
+  }
+
+  async function joinTryoutByCode(event: SubmitEvent) {
+    event.preventDefault();
+
+    const normalizedCode = joinCode.trim().toUpperCase();
+
+    if (!normalizedCode) {
+      errorMessage = "Kode tryout wajib diisi.";
+      return;
+    }
+
+    joiningByCode = true;
+    errorMessage = "";
+    successMessage = "";
+
+    try {
+      const result = await apiFetch<JoinTryoutByCodeResponse>(
+        "/student/tryouts/join-by-code",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            code: normalizedCode,
+          }),
+        },
+      );
+
+      successMessage = result.message;
+      joinCode = "";
+
+      invalidateStudentTryoutsCache();
+
+      await loadTryouts({
+        force: true,
+      });
+    } catch (error) {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Gagal bergabung menggunakan kode tryout.";
+    } finally {
+      joiningByCode = false;
     }
   }
 
@@ -169,9 +232,12 @@
       );
 
       successMessage = result.message;
+
       invalidateStudentTryoutsCache();
 
-      await loadTryouts({ force: true });
+      await loadTryouts({
+        force: true,
+      });
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -233,8 +299,8 @@
       <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Pilih paket tryout yang sudah dibuka oleh admin atau guru. Kamu perlu
-        mendapat persetujuan sebelum bisa mengerjakan.
+        Masukkan kode tryout untuk langsung bergabung atau kirim permintaan
+        akses kepada admin maupun guru.
       </p>
     </div>
 
@@ -247,6 +313,48 @@
       {refreshing ? "Memuat..." : "Refresh"}
     </button>
   </div>
+
+  <form
+    onsubmit={joinTryoutByCode}
+    class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-950 to-blue-800 p-5 text-white shadow-sm"
+  >
+    <div
+      class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+    >
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-blue-200">
+          Kode Tryout
+        </p>
+
+        <h3 class="mt-1 text-xl font-bold">Gabung langsung dengan kode</h3>
+
+        <p class="mt-1 text-sm text-blue-100">
+          Kode diberikan oleh admin atau guru pembuat tryout.
+        </p>
+      </div>
+
+      <div class="flex w-full flex-col gap-2 sm:flex-row lg:max-w-lg">
+        <input
+          type="text"
+          value={joinCode}
+          oninput={handleJoinCodeInput}
+          maxlength="20"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Contoh: H7K2PA"
+          class="min-w-0 flex-1 rounded-xl border border-white/20 bg-white px-4 py-3 font-mono text-base font-bold uppercase tracking-[0.18em] text-slate-950 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-400"
+        />
+
+        <button
+          type="submit"
+          disabled={joiningByCode || !joinCode.trim()}
+          class="rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-950 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {joiningByCode ? "Memproses..." : "Gabung"}
+        </button>
+      </div>
+    </div>
+  </form>
 
   {#if errorMessage}
     <p

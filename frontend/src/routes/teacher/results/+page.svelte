@@ -1,8 +1,18 @@
 <script lang="ts">
-  import { page } from "$app/state";
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
-  import { apiFetch } from "$lib/api";
+  import {
+    getTeacherTryoutResultsCached,
+    getTeacherTryoutsCached,
+    getTeacherTryoutStatisticsCached,
+    invalidateTeacherTryoutResultsCache,
+    invalidateTeacherTryoutsCache,
+    invalidateTeacherTryoutStatisticsCache,
+    readTeacherTryoutResultsCache,
+    readTeacherTryoutsCache,
+    readTeacherTryoutStatisticsCache,
+  } from "$lib/cache/teacher-page-cache";
   import type {
     TeacherTryoutResultsResponse,
     TeacherTryoutsResponse,
@@ -47,38 +57,87 @@
     return "bg-slate-100 text-slate-700";
   }
 
-  async function loadTryouts() {
-    const result = await apiFetch<TeacherTryoutsResponse>("/teacher/tryouts");
-
-    tryouts = result.tryouts;
-
+  function resolveSelectedTryout() {
     const queryTryoutId = page.url.searchParams.get("tryoutId");
-    const foundFromQuery = tryouts.find(
+
+    const tryoutFromQuery = tryouts.find(
       (tryout) => tryout.id === queryTryoutId,
     );
 
-    selectedTryoutId = foundFromQuery?.id ?? tryouts[0]?.id ?? "";
+    const previousTryout = tryouts.find(
+      (tryout) => tryout.id === selectedTryoutId,
+    );
+
+    selectedTryoutId =
+      tryoutFromQuery?.id ?? previousTryout?.id ?? tryouts[0]?.id ?? "";
   }
 
-  async function loadResults() {
-    if (!selectedTryoutId) {
-      sessions = [];
-      statistics = null;
+  async function loadTryouts(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+    const cachedTryouts = !force ? readTeacherTryoutsCache() : null;
+
+    if (cachedTryouts) {
+      tryouts = cachedTryouts;
+      resolveSelectedTryout();
       return;
     }
 
-    loadingResults = true;
+    tryouts = await getTeacherTryoutsCached({
+      force,
+    });
+
+    resolveSelectedTryout();
+  }
+
+  async function loadResults(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+    const requestedTryoutId = selectedTryoutId;
+
+    if (!requestedTryoutId) {
+      sessions = [];
+      statistics = null;
+      loadingResults = false;
+      return;
+    }
+
     errorMessage = "";
+
+    const cachedResults = !force
+      ? readTeacherTryoutResultsCache(requestedTryoutId)
+      : null;
+
+    const cachedStatistics = !force
+      ? readTeacherTryoutStatisticsCache(requestedTryoutId)
+      : null;
+
+    if (cachedResults) {
+      sessions = cachedResults.sessions;
+    }
+
+    if (cachedStatistics) {
+      statistics = cachedStatistics;
+    }
+
+    if (cachedResults && cachedStatistics) {
+      loadingResults = false;
+      return;
+    }
+
+    loadingResults = sessions.length === 0 && statistics === null;
 
     try {
       const [resultsResult, statisticsResult] = await Promise.all([
-        apiFetch<TeacherTryoutResultsResponse>(
-          `/teacher/tryouts/${selectedTryoutId}/results`,
-        ),
-        apiFetch<TeacherTryoutStatisticsResponse>(
-          `/teacher/tryouts/${selectedTryoutId}/statistics`,
-        ),
+        getTeacherTryoutResultsCached(requestedTryoutId, {
+          force,
+        }),
+        getTeacherTryoutStatisticsCached(requestedTryoutId, {
+          force,
+        }),
       ]);
+
+      if (selectedTryoutId !== requestedTryoutId) {
+        return;
+      }
 
       sessions = resultsResult.sessions;
       statistics = statisticsResult;
@@ -86,7 +145,9 @@
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat hasil siswa.";
     } finally {
-      loadingResults = false;
+      if (selectedTryoutId === requestedTryoutId) {
+        loadingResults = false;
+      }
     }
   }
 
@@ -94,12 +155,39 @@
     const select = event.currentTarget as HTMLSelectElement;
 
     selectedTryoutId = select.value;
+    sessions = [];
+    statistics = null;
 
     await loadResults();
   }
 
   async function refreshResults() {
-    await loadResults();
+    if (!selectedTryoutId) {
+      return;
+    }
+
+    const currentTryoutId = selectedTryoutId;
+
+    invalidateTeacherTryoutsCache();
+    invalidateTeacherTryoutResultsCache(currentTryoutId);
+    invalidateTeacherTryoutStatisticsCache(currentTryoutId);
+
+    try {
+      await loadTryouts({
+        force: true,
+      });
+
+      if (tryouts.some((tryout) => tryout.id === currentTryoutId)) {
+        selectedTryoutId = currentTryoutId;
+      }
+
+      await loadResults({
+        force: true,
+      });
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal memperbarui hasil.";
+    }
   }
 
   onMount(async () => {
@@ -415,8 +503,8 @@
                       </p>
 
                       <p class="text-xs text-slate-400">
-                        {session.student.school ?? "-"} · {session.student
-                          .className ?? "-"}
+                        {session.student.school ?? "-"} ·
+                        {session.student.className ?? "-"}
                       </p>
                     </td>
 

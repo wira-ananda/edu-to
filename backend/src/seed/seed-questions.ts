@@ -21,6 +21,10 @@ const BIOLOGY_TRYOUT_TITLE = "[SEED] Tryout Biologi SMA - Admin";
 const BINDO_TRYOUT_TITLE = "[SEED] Tryout Bahasa Indonesia Kelas 10 - Guru";
 const PRAMUKA_TRYOUT_TITLE = "[SEED] Tryout Pramuka Boyman Bab 1-2 - Guru";
 
+const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const JOIN_CODE_LENGTH = 6;
+const MAX_JOIN_CODE_ATTEMPTS = 30;
+
 type QuestionSource = {
   text: string;
   correct: string;
@@ -2313,6 +2317,37 @@ function buildQuestions(prefix: string, sources: QuestionSource[]) {
     };
   });
 }
+function generateJoinCodeCandidate() {
+  let code = "";
+
+  for (let index = 0; index < JOIN_CODE_LENGTH; index += 1) {
+    const randomIndex = Math.floor(Math.random() * JOIN_CODE_ALPHABET.length);
+    code += JOIN_CODE_ALPHABET[randomIndex];
+  }
+
+  return code;
+}
+
+async function generateUniqueJoinCode() {
+  for (let attempt = 0; attempt < MAX_JOIN_CODE_ATTEMPTS; attempt += 1) {
+    const joinCode = generateJoinCodeCandidate();
+
+    const existingTryout = await prisma.tryout.findUnique({
+      where: {
+        joinCode,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingTryout) {
+      return joinCode;
+    }
+  }
+
+  throw new Error("Failed to generate unique tryout join code.");
+}
 
 async function getOwnerByEmail(email: string) {
   const owner = await prisma.user.findUnique({
@@ -2431,6 +2466,8 @@ async function seedQuestionsForTarget(target: SeedTarget) {
       durationMinutes: target.durationMinutes,
       maxAttempts: target.maxAttempts,
       status: target.status,
+      joinCode: await generateUniqueJoinCode(),
+      joinCodeEnabled: true,
     },
   });
 
@@ -2460,6 +2497,7 @@ async function seedQuestionsForTarget(target: SeedTarget) {
 
   console.log(`Seeded ${questions.length} questions: ${target.subjectName}`);
   console.log(`Created tryout: ${tryout.title}`);
+  console.log(`Join code: ${tryout.joinCode}`);
   console.log("Answer distribution:", answerDistribution);
   console.log("Difficulty distribution:", difficultyDistribution);
 }

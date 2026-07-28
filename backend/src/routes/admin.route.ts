@@ -29,21 +29,31 @@ adminRoutes.get(
   "/tryouts/:id/participants",
   adminController.getTryoutParticipants,
 );
+
 adminRoutes.post(
   "/tryouts/:id/participants/:studentId",
   adminController.enrollStudent,
 );
 
 adminRoutes.get("/tryouts/:id/results", adminController.getTryoutResults);
+
 adminRoutes.get("/tryouts/:id/statistics", adminController.getTryoutStatistics);
+
+adminRoutes.patch(
+  "/tryouts/:id/join-code/regenerate",
+  adminController.regenerateTryoutJoinCode,
+);
 
 adminRoutes.get("/tryouts/:id", adminController.getTryoutById);
 adminRoutes.put("/tryouts/:id", adminController.updateTryout);
+
 adminRoutes.patch("/tryouts/:id/status", adminController.updateTryoutStatus);
+
 adminRoutes.delete("/tryouts/:id", adminController.deleteTryout);
 
 adminRoutes.patch(
   "/enrollments/:id/approve",
   adminController.approveEnrollment,
 );
+
 adminRoutes.patch("/enrollments/:id/reject", adminController.rejectEnrollment);

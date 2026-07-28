@@ -29,29 +29,39 @@ teacherRoutes.get(
   "/tryouts/:id/participants",
   teacherController.getTryoutParticipants,
 );
+
 teacherRoutes.post(
   "/tryouts/:id/participants/:studentId",
   teacherController.enrollStudent,
 );
 
 teacherRoutes.get("/tryouts/:id/results", teacherController.getTryoutResults);
+
 teacherRoutes.get(
   "/tryouts/:id/statistics",
   teacherController.getTryoutStatistics,
 );
 
+teacherRoutes.patch(
+  "/tryouts/:id/join-code/regenerate",
+  teacherController.regenerateTryoutJoinCode,
+);
+
 teacherRoutes.get("/tryouts/:id", teacherController.getTryoutById);
 teacherRoutes.put("/tryouts/:id", teacherController.updateTryout);
+
 teacherRoutes.patch(
   "/tryouts/:id/status",
   teacherController.updateTryoutStatus,
 );
+
 teacherRoutes.delete("/tryouts/:id", teacherController.deleteTryout);
 
 teacherRoutes.patch(
   "/enrollments/:id/approve",
   teacherController.approveEnrollment,
 );
+
 teacherRoutes.patch(
   "/enrollments/:id/reject",
   teacherController.rejectEnrollment,

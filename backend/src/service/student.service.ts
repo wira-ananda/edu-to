@@ -141,6 +141,31 @@ function calculateScore(correctCount: number, totalQuestions: number) {
   return Math.round((correctCount / totalQuestions) * 100);
 }
 
+function normalizeJoinCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function validateJoinCode(rawCode: string) {
+  const code = normalizeJoinCode(rawCode);
+
+  if (!code) {
+    throw new StudentServiceError("Kode tryout wajib diisi.", 400);
+  }
+
+  if (code.length < 4 || code.length > 20) {
+    throw new StudentServiceError("Kode tryout tidak valid.", 400);
+  }
+
+  if (!/^[A-Z0-9]+$/.test(code)) {
+    throw new StudentServiceError(
+      "Kode tryout hanya boleh berisi huruf dan angka.",
+      400,
+    );
+  }
+
+  return code;
+}
+
 function toStudentQuestion(question: StudentQuestionCandidate) {
   return {
     id: question.id,
@@ -652,6 +677,101 @@ async function requestJoinTryout(userId: string, tryoutId: string) {
 
   return {
     message: "Permintaan gabung tryout berhasil dikirim.",
+    enrollment: toEnrollmentPayload(enrollment),
+    tryout: {
+      id: tryout.id,
+      title: tryout.title,
+      owner: tryout.owner,
+      bank: tryout.subject,
+    },
+  };
+}
+
+async function joinTryoutByCode(userId: string, rawCode: string) {
+  const code = validateJoinCode(rawCode);
+
+  const tryout = await prisma.tryout.findUnique({
+    where: {
+      joinCode: code,
+    },
+    include: {
+      owner: {
+        select: tryoutOwnerSelect,
+      },
+      subject: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!tryout) {
+    throw new StudentServiceError("Kode tryout tidak valid.", 404);
+  }
+
+  if (!tryout.joinCodeEnabled) {
+    throw new StudentServiceError("Kode tryout ini sedang dinonaktifkan.", 400);
+  }
+
+  if (tryout.status !== "OPEN") {
+    throw new StudentServiceError(
+      "Tryout ini belum dibuka atau sudah ditutup.",
+      400,
+    );
+  }
+
+  const existingEnrollment = await prisma.tryoutEnrollment.findUnique({
+    where: {
+      tryoutId_studentId: {
+        tryoutId: tryout.id,
+        studentId: userId,
+      },
+    },
+    select: enrollmentSelect,
+  });
+
+  if (existingEnrollment?.status === "APPROVED") {
+    return {
+      message: "Kamu sudah terdaftar sebagai peserta tryout ini.",
+      enrollment: toEnrollmentPayload(existingEnrollment),
+      tryout: {
+        id: tryout.id,
+        title: tryout.title,
+        owner: tryout.owner,
+        bank: tryout.subject,
+      },
+    };
+  }
+
+  const now = new Date();
+
+  const enrollment = existingEnrollment
+    ? await prisma.tryoutEnrollment.update({
+        where: {
+          id: existingEnrollment.id,
+        },
+        data: {
+          status: "APPROVED",
+          approvedAt: now,
+          rejectedAt: null,
+        },
+        select: enrollmentSelect,
+      })
+    : await prisma.tryoutEnrollment.create({
+        data: {
+          tryoutId: tryout.id,
+          studentId: userId,
+          status: "APPROVED",
+          approvedAt: now,
+          rejectedAt: null,
+        },
+        select: enrollmentSelect,
+      });
+
+  return {
+    message: "Kode valid. Kamu berhasil bergabung sebagai peserta tryout.",
     enrollment: toEnrollmentPayload(enrollment),
     tryout: {
       id: tryout.id,
@@ -1237,6 +1357,7 @@ async function getSessionResult(userId: string, sessionId: string) {
 export default {
   getTryouts,
   requestJoinTryout,
+  joinTryoutByCode,
   startTryout,
   getSessions,
   getNextQuestion,
