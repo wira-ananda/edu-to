@@ -24,7 +24,7 @@ const SUBJECT_NAME = "Biologi Kelas 10";
 
 const TRYOUT_TITLE = "Tryout Biologi Kelas 10";
 
-const TRYOUT_TOTAL_QUESTIONS = 40;
+const TRYOUT_TOTAL_QUESTIONS = 10;
 const TRYOUT_DURATION_MINUTES = 60;
 const TRYOUT_MAX_ATTEMPTS = 3;
 const TRYOUT_STATUS: TryoutStatus = "OPEN";
@@ -1276,51 +1276,43 @@ function validateAnswerDistribution(questions: RawQuestion[]) {
 }
 
 async function cleanupExistingData(teacherId: string, subjectId: string) {
-  const existingTryout = await prisma.tryout.findFirst({
+  console.log("Resetting old Biologi Kelas 10 data...");
+
+  const existingTryouts = await prisma.tryout.findMany({
     where: {
       ownerId: teacherId,
-      title: TRYOUT_TITLE,
       subjectId,
+      title: TRYOUT_TITLE,
     },
 
-    include: {
-      _count: {
-        select: {
-          sessions: true,
-          enrollments: true,
-        },
-      },
+    select: {
+      id: true,
+      title: true,
     },
   });
 
-  if (existingTryout) {
-    if (existingTryout._count.sessions > 0) {
-      throw new Error(
-        `Tryout "${TRYOUT_TITLE}" sudah memiliki sesi siswa. Hapus sesi tersebut terlebih dahulu sebelum menjalankan ulang seed.`,
-      );
-    }
+  for (const tryout of existingTryouts) {
+    console.log(`Deleting old tryout: ${tryout.title}`);
 
-    if (existingTryout._count.enrollments > 0) {
-      await prisma.tryoutEnrollment.deleteMany({
-        where: {
-          tryoutId: existingTryout.id,
-        },
-      });
-    }
-
+    /*
+     * Session, answer, enrollment, dan data turunan
+     * seharusnya terhapus melalui onDelete: Cascade.
+     */
     await prisma.tryout.delete({
       where: {
-        id: existingTryout.id,
+        id: tryout.id,
       },
     });
   }
 
-  await prisma.question.deleteMany({
+  const deletedQuestions = await prisma.question.deleteMany({
     where: {
       ownerId: teacherId,
       subjectId,
     },
   });
+
+  console.log(`Deleted ${deletedQuestions.count} old questions.`);
 }
 
 async function seedBiologyQuestions(
