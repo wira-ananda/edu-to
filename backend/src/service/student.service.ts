@@ -95,6 +95,7 @@ const resultSessionInclude = {
           optionD: true,
 
           correctAnswer: true,
+          difficultyLevel: true,
 
           imageUrl: true,
           imageAltText: true,
@@ -1380,6 +1381,7 @@ async function getSessionResult(userId: string, sessionId: string) {
       selectedAnswer: answer.selectedAnswer,
 
       correctAnswer: answer.question.correctAnswer,
+      difficultyLevel: answer.question.difficultyLevel,
 
       isCorrect: answer.isCorrect,
 

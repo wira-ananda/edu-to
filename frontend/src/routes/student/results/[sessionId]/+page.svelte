@@ -40,7 +40,29 @@
 
     const answerText = getAnswerText(answer, option);
 
+    if (!answerText) {
+      return option;
+    }
+
     return `${option}. ${answerText}`;
+  }
+
+  function getDifficultyBadgeClass(
+    difficultyLevel: ResultAnswer["difficultyLevel"],
+  ) {
+    if (difficultyLevel === "LOW") {
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    }
+
+    if (difficultyLevel === "MEDIUM") {
+      return "bg-amber-50 text-amber-700 ring-amber-200";
+    }
+
+    if (difficultyLevel === "HIGH") {
+      return "bg-red-50 text-red-700 ring-red-200";
+    }
+
+    return "bg-slate-50 text-slate-600 ring-slate-200";
   }
 
   async function loadResult() {
@@ -185,7 +207,8 @@
         <h3 class="text-lg font-bold text-slate-950">Pembahasan Jawaban</h3>
 
         <p class="mt-1 text-sm text-slate-500">
-          Lihat jawaban yang kamu pilih dan kunci jawaban setiap soal.
+          Lihat jawaban yang kamu pilih, tingkat kesulitan, dan kunci jawaban
+          setiap soal.
         </p>
       </div>
     </div>
@@ -200,15 +223,30 @@
         >
           <!-- Question Header -->
           <div
-            class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5 sm:p-6"
+            class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 p-5 sm:px-6"
           >
             <div class="min-w-0 flex-1">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Soal {index + 1}
-              </p>
+              <!-- Question Meta -->
+              <div class="flex flex-wrap items-center gap-2">
+                <p
+                  class="text-xs font-bold uppercase tracking-wide text-slate-400"
+                >
+                  Soal {index + 1}
+                </p>
 
+                <!-- Difficulty Badge -->
+                {#if answer.difficultyLevel}
+                  <span
+                    class={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${getDifficultyBadgeClass(
+                      answer.difficultyLevel,
+                    )}`}
+                  >
+                    {getDifficultyLabel(answer.difficultyLevel)}
+                  </span>
+                {/if}
+              </div>
+
+              <!-- Question Text -->
               <p
                 class="mt-2 whitespace-pre-line font-semibold leading-7 text-slate-900"
               >
@@ -216,9 +254,10 @@
               </p>
             </div>
 
+            <!-- Result Status -->
             {#if answer.isCorrect}
               <span
-                class="shrink-0 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700"
+                class="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
               >
                 Benar
               </span>
