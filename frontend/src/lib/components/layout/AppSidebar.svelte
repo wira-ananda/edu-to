@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AppUser } from "$lib/auth";
   import type { AppNavGroup } from "$lib/types/navigation";
+
   import NavIcon from "./NavIcon.svelte";
 
   type Props = {
@@ -8,7 +9,7 @@
     appName?: string;
     panelLabel: string;
     navGroups: AppNavGroup[];
-    activeHref: string;
+    activeHref?: string;
     mobileOpen?: boolean;
     onLogout: () => void | Promise<void>;
     onCloseMobile?: () => void;
@@ -19,14 +20,14 @@
     appName = "EduTryout",
     panelLabel,
     navGroups,
-    activeHref,
+    activeHref = "",
     mobileOpen = false,
     onLogout,
     onCloseMobile,
   }: Props = $props();
 
   const initials = $derived.by(() => {
-    const words = user.name.trim().split(" ").filter(Boolean).slice(0, 2);
+    const words = user.name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
 
     if (words.length === 0) {
       return "U";
@@ -47,12 +48,28 @@
     return "/student";
   });
 
-  function isActive(href: string) {
-    if (href === "/admin" || href === "/teacher" || href === "/student") {
+  function isHomeHref(href: string) {
+    return href === "/admin" || href === "/teacher" || href === "/student";
+  }
+
+  function isActive(href: string | undefined) {
+    if (!href || !activeHref) {
+      return false;
+    }
+
+    if (isHomeHref(href)) {
       return activeHref === href;
     }
 
     return activeHref === href || activeHref.startsWith(`${href}/`);
+  }
+
+  function closeMobileSidebar() {
+    onCloseMobile?.();
+  }
+
+  async function handleLogout() {
+    await onLogout();
   }
 </script>
 
@@ -78,7 +95,7 @@
     <a
       href={homeHref}
       class="flex min-w-0 items-center gap-3"
-      onclick={() => onCloseMobile?.()}
+      onclick={closeMobileSidebar}
     >
       <div
         class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f8c900] text-[#062b63] shadow-sm"
@@ -114,7 +131,7 @@
       type="button"
       aria-label="Tutup menu"
       class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-blue-100 transition hover:bg-white/10 lg:hidden"
-      onclick={() => onCloseMobile?.()}
+      onclick={closeMobileSidebar}
     >
       <svg
         class="h-5 w-5"
@@ -144,17 +161,19 @@
 
           <div class="space-y-1.5">
             {#each group.items as item}
+              {@const active = isActive(item.href)}
+
               <a
                 href={item.href}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                onclick={() => onCloseMobile?.()}
+                aria-current={active ? "page" : undefined}
+                onclick={closeMobileSidebar}
                 class={`group relative flex items-center gap-3 overflow-hidden rounded-xl px-3.5 py-3 text-sm font-bold transition ${
-                  isActive(item.href)
+                  active
                     ? "bg-white text-[#062b63] shadow-lg shadow-black/10"
                     : "text-blue-100 hover:bg-white/10 hover:text-white"
                 }`}
               >
-                {#if isActive(item.href)}
+                {#if active}
                   <span
                     class="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[#f8c900]"
                   ></span>
@@ -162,7 +181,7 @@
 
                 <span
                   class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition ${
-                    isActive(item.href)
+                    active
                       ? "bg-[#f8c900]/20 text-[#062b63]"
                       : "bg-white/5 text-blue-200 group-hover:bg-white/10 group-hover:text-white"
                   }`}
@@ -170,9 +189,11 @@
                   <NavIcon name={item.icon} />
                 </span>
 
-                <span class="truncate">{item.label}</span>
+                <span class="truncate">
+                  {item.label}
+                </span>
 
-                {#if isActive(item.href)}
+                {#if active}
                   <svg
                     class="ml-auto h-4 w-4 shrink-0 text-[#0c438c]"
                     viewBox="0 0 24 24"
@@ -213,7 +234,7 @@
 
     <button
       type="button"
-      onclick={() => onLogout()}
+      onclick={handleLogout}
       class="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-blue-100 transition hover:border-red-300/30 hover:bg-red-500/10 hover:text-red-200"
     >
       <svg
