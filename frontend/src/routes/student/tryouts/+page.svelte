@@ -1,139 +1,97 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
+
   import { apiFetch } from "$lib/api";
+
   import {
     getStudentTryoutsCached,
     invalidateStudentSessionsCache,
     invalidateStudentTryoutsCache,
     readStudentTryoutsCache,
   } from "$lib/cache/student-page-cache";
+
+  import StudentJoinCodeCard from "$lib/components/tryouts/StudentJoinCodeCard.svelte";
+  import StudentTryoutCard from "$lib/components/tryouts/StudentTryoutCard.svelte";
+
   import type {
     JoinTryoutByCodeResponse,
     RequestJoinTryoutResponse,
     StartTryoutResponse,
     StudentTryoutItem,
   } from "$lib/types/student";
-  import {
-    getEnrollmentStatusBadgeClass,
-    getEnrollmentStatusLabel,
-    getMaxAttemptsLabel,
-  } from "$lib/types/admin";
+
+  type TryoutTab = "MY" | "AVAILABLE";
 
   let loading = $state(true);
   let refreshing = $state(false);
   let joiningByCode = $state(false);
+
   let startingTryoutId = $state("");
   let requestingJoinTryoutId = $state("");
 
   let joinCode = $state("");
+
   let errorMessage = $state("");
   let successMessage = $state("");
 
   let tryouts = $state<StudentTryoutItem[]>([]);
 
+  let activeTab = $state<TryoutTab>("MY");
+  let tabInitialized = $state(false);
+
+  const myTryouts = $derived(
+    tryouts.filter((tryout) => tryout.enrollmentStatus === "APPROVED"),
+  );
+
+  const availableTryouts = $derived(
+    tryouts.filter((tryout) => tryout.enrollmentStatus !== "APPROVED"),
+  );
+
+  const pendingTryoutsCount = $derived(
+    availableTryouts.filter((tryout) => tryout.enrollmentStatus === "PENDING")
+      .length,
+  );
+
+  const displayedTryouts = $derived(
+    activeTab === "MY" ? myTryouts : availableTryouts,
+  );
+
+  const activeTryoutsCount = $derived(
+    myTryouts.filter(
+      (tryout) => Boolean(tryout.ongoingSessionId) || tryout.canStart,
+    ).length,
+  );
+
   function isValidEnrollmentCache(cachedTryouts: StudentTryoutItem[]) {
-    return cachedTryouts.every((tryout) => "enrollmentStatus" in tryout);
+    return cachedTryouts.every(
+      (tryout) =>
+        "enrollmentStatus" in tryout &&
+        "attemptsUsed" in tryout &&
+        "canStart" in tryout,
+    );
   }
 
-  function getOwnerLabel(tryout: StudentTryoutItem) {
-    if (!tryout.owner) {
-      return "Admin / Guru";
+  function initializeTab() {
+    if (tabInitialized) {
+      return;
     }
 
-    if (tryout.owner.role === "ADMIN") {
-      return `Admin: ${tryout.owner.name}`;
-    }
-
-    if (tryout.owner.role === "TEACHER") {
-      return `Guru: ${tryout.owner.name}`;
-    }
-
-    return tryout.owner.name;
+    activeTab = myTryouts.length > 0 ? "MY" : "AVAILABLE";
+    tabInitialized = true;
   }
 
-  function getAttemptsRemainingLabel(tryout: StudentTryoutItem) {
-    if (tryout.maxAttempts === null) {
-      return "Tanpa batas";
-    }
-
-    return `${tryout.attemptsRemaining ?? 0} tersisa`;
+  function selectTab(tab: TryoutTab) {
+    activeTab = tab;
+    errorMessage = "";
+    successMessage = "";
   }
 
-  function getEnrollmentDescription(tryout: StudentTryoutItem) {
-    if (tryout.enrollmentStatus === "APPROVED") {
-      return "Kamu sudah terdaftar dan bisa mengerjakan tryout ini.";
-    }
-
-    if (tryout.enrollmentStatus === "PENDING") {
-      return "Permintaanmu sedang menunggu persetujuan admin atau guru.";
-    }
-
-    if (tryout.enrollmentStatus === "REJECTED") {
-      return "Permintaanmu ditolak. Hubungi guru atau admin jika perlu.";
-    }
-
-    return "Gunakan kode tryout atau kirim permintaan akses untuk bergabung.";
-  }
-
-  function getStartDisabledReason(tryout: StudentTryoutItem) {
-    if (tryout.bank.totalAvailableQuestions < tryout.totalQuestions) {
-      return "Soal tersedia tidak cukup untuk tryout ini.";
-    }
-
-    if (tryout.enrollmentStatus !== "APPROVED") {
-      if (tryout.enrollmentStatus === "PENDING") {
-        return "Permintaan bergabung masih menunggu persetujuan.";
-      }
-
-      if (tryout.enrollmentStatus === "REJECTED") {
-        return "Permintaan bergabung sudah ditolak.";
-      }
-
-      return "Kamu harus meminta akses terlebih dahulu.";
-    }
-
-    if (tryout.ongoingSessionId) {
-      return "";
-    }
-
-    if (!tryout.canStart) {
-      return "Batas percobaan untuk tryout ini sudah habis.";
-    }
-
-    return "";
-  }
-
-  function getActionLabel(tryout: StudentTryoutItem) {
-    if (tryout.canRequestJoin) {
-      return "Minta Bergabung";
-    }
-
-    if (tryout.enrollmentStatus === "PENDING") {
-      return "Menunggu Persetujuan";
-    }
-
-    if (tryout.enrollmentStatus === "REJECTED") {
-      return "Akses Ditolak";
-    }
-
-    if (tryout.ongoingSessionId) {
-      return "Lanjutkan Tryout";
-    }
-
-    return "Mulai Tryout";
-  }
-
-  function handleJoinCodeInput(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-
-    joinCode = input.value
-      .toUpperCase()
-      .replace(/\s+/g, "")
-      .replace(/[^A-Z0-9]/g, "");
-  }
-
-  async function loadTryouts(options: { force?: boolean } = {}) {
+  async function loadTryouts(
+    options: {
+      force?: boolean;
+    } = {},
+  ) {
     const force = options.force ?? false;
 
     errorMessage = "";
@@ -143,6 +101,9 @@
     if (cachedTryouts && isValidEnrollmentCache(cachedTryouts)) {
       tryouts = cachedTryouts;
       loading = false;
+
+      initializeTab();
+
       return;
     }
 
@@ -150,8 +111,10 @@
 
     try {
       tryouts = await getStudentTryoutsCached({
-        force: true,
+        force: force || Boolean(cachedTryouts),
       });
+
+      initializeTab();
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memuat daftar tryout.";
@@ -162,6 +125,8 @@
 
   async function refreshTryouts() {
     refreshing = true;
+
+    errorMessage = "";
     successMessage = "";
 
     invalidateStudentTryoutsCache();
@@ -175,17 +140,16 @@
     }
   }
 
-  async function joinTryoutByCode(event: SubmitEvent) {
-    event.preventDefault();
+  async function joinTryoutByCode(code: string) {
+    const normalizedCode = code.trim().toUpperCase();
 
-    const normalizedCode = joinCode.trim().toUpperCase();
-
-    if (!normalizedCode) {
-      errorMessage = "Kode tryout wajib diisi.";
+    if (normalizedCode.length !== 6) {
+      errorMessage = "Kode tryout harus terdiri dari 6 karakter.";
       return;
     }
 
     joiningByCode = true;
+
     errorMessage = "";
     successMessage = "";
 
@@ -208,6 +172,12 @@
       await loadTryouts({
         force: true,
       });
+
+      /*
+       * Join melalui kode langsung APPROVED,
+       * jadi arahkan siswa ke Tryout Saya.
+       */
+      activeTab = "MY";
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -220,6 +190,7 @@
 
   async function requestJoinTryout(tryout: StudentTryoutItem) {
     requestingJoinTryoutId = tryout.id;
+
     errorMessage = "";
     successMessage = "";
 
@@ -238,6 +209,12 @@
       await loadTryouts({
         force: true,
       });
+
+      /*
+       * Request join masih PENDING.
+       * Tetap di Belum Bergabung agar siswa dapat melihat statusnya.
+       */
+      activeTab = "AVAILABLE";
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -248,7 +225,7 @@
     }
   }
 
-  async function startTryout(tryout: StudentTryoutItem) {
+  async function handleTryoutAction(tryout: StudentTryoutItem) {
     if (tryout.canRequestJoin) {
       await requestJoinTryout(tryout);
       return;
@@ -260,6 +237,7 @@
     }
 
     startingTryoutId = tryout.id;
+
     errorMessage = "";
     successMessage = "";
 
@@ -291,16 +269,25 @@
   });
 </script>
 
-<section class="space-y-5">
+<section class="space-y-6">
+  <!-- Page Header -->
   <div
-    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+    class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Mulai Tryout</h2>
+      <p
+        class="text-[10px] font-black uppercase tracking-[0.18em] text-[#0c438c]"
+      >
+        Tryout
+      </p>
 
-      <p class="mt-1 text-sm text-slate-500">
-        Masukkan kode tryout untuk langsung bergabung atau kirim permintaan
-        akses kepada admin maupun guru.
+      <h2 class="mt-1 text-2xl font-black tracking-tight text-slate-950">
+        Mulai Tryout
+      </h2>
+
+      <p class="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+        Kerjakan tryout yang sudah kamu ikuti atau cari tryout lain yang
+        tersedia.
       </p>
     </div>
 
@@ -308,256 +295,423 @@
       type="button"
       onclick={refreshTryouts}
       disabled={loading || refreshing}
-      class="w-fit rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60"
+      class="flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {refreshing ? "Memuat..." : "Refresh"}
+      {#if refreshing}
+        <span
+          class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        ></span>
+
+        Memuat
+      {:else}
+        <svg
+          class="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M20 7v5h-5" />
+          <path d="M4 17v-5h5" />
+          <path d="M18.5 9A7 7 0 0 0 6 7l-2 5" />
+          <path d="M5.5 15A7 7 0 0 0 18 17l2-5" />
+        </svg>
+
+        Refresh
+      {/if}
     </button>
   </div>
 
-  <form
-    onsubmit={joinTryoutByCode}
-    class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-950 to-blue-800 p-5 text-white shadow-sm"
-  >
+  <!-- Join Code -->
+  <StudentJoinCodeCard
+    bind:value={joinCode}
+    loading={joiningByCode}
+    disabled={loading}
+    onSubmit={joinTryoutByCode}
+  />
+
+  <!-- Error -->
+  {#if errorMessage}
     <div
-      class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+      class="flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3.5"
     >
-      <div>
-        <p class="text-xs font-bold uppercase tracking-[0.16em] text-blue-200">
-          Kode Tryout
-        </p>
-
-        <h3 class="mt-1 text-xl font-bold">Gabung langsung dengan kode</h3>
-
-        <p class="mt-1 text-sm text-blue-100">
-          Kode diberikan oleh admin atau guru pembuat tryout.
-        </p>
+      <div
+        class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600"
+      >
+        <svg
+          class="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 8v5" />
+          <path d="M12 16h.01" />
+          <circle cx="12" cy="12" r="9" />
+        </svg>
       </div>
 
-      <div class="flex w-full flex-col gap-2 sm:flex-row lg:max-w-lg">
-        <input
-          type="text"
-          value={joinCode}
-          oninput={handleJoinCodeInput}
-          maxlength="20"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Contoh: H7K2PA"
-          class="min-w-0 flex-1 rounded-xl border border-white/20 bg-white px-4 py-3 font-mono text-base font-bold uppercase tracking-[0.18em] text-slate-950 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-400"
-        />
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-red-700">Tidak dapat memproses</p>
 
-        <button
-          type="submit"
-          disabled={joiningByCode || !joinCode.trim()}
-          class="rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-950 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {joiningByCode ? "Memproses..." : "Gabung"}
-        </button>
+        <p class="mt-0.5 text-sm leading-5 text-red-600">
+          {errorMessage}
+        </p>
       </div>
     </div>
-  </form>
-
-  {#if errorMessage}
-    <p
-      class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
-    >
-      {errorMessage}
-    </p>
   {/if}
 
+  <!-- Success -->
   {#if successMessage}
-    <p
-      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    <div
+      class="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5"
     >
-      {successMessage}
-    </p>
+      <div
+        class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+      >
+        <svg
+          class="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="m8 12 2.5 2.5L16 9" />
+          <circle cx="12" cy="12" r="9" />
+        </svg>
+      </div>
+
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-emerald-800">Berhasil</p>
+
+        <p class="mt-0.5 text-sm leading-5 text-emerald-700">
+          {successMessage}
+        </p>
+      </div>
+    </div>
   {/if}
 
   {#if loading}
-    <div
-      class="rounded-2xl border border-slate-200 bg-white p-8 text-sm font-semibold text-slate-500 shadow-sm"
-    >
-      Memuat tryout...
-    </div>
-  {:else if tryouts.length === 0}
-    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-600">
-        Belum ada tryout yang tersedia.
-      </p>
+    <!-- Skeleton -->
+    <section class="space-y-4">
+      <div
+        class="h-14 animate-pulse rounded-2xl border border-slate-200 bg-white"
+      ></div>
 
-      <p class="mt-2 text-sm text-slate-500">
-        Tryout akan muncul jika statusnya sudah dibuka.
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {#each Array(3) as _}
+          <div
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+          >
+            <div class="h-1.5 animate-pulse bg-slate-200"></div>
+
+            <div class="space-y-4 p-5">
+              <div class="h-5 w-4/5 animate-pulse rounded bg-slate-200"></div>
+
+              <div class="h-4 w-1/2 animate-pulse rounded bg-slate-100"></div>
+
+              <div class="h-20 animate-pulse rounded-xl bg-slate-100"></div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div class="h-20 animate-pulse rounded-xl bg-slate-100"></div>
+                <div class="h-20 animate-pulse rounded-xl bg-slate-100"></div>
+                <div class="h-20 animate-pulse rounded-xl bg-slate-100"></div>
+                <div class="h-20 animate-pulse rounded-xl bg-slate-100"></div>
+              </div>
+
+              <div class="h-11 animate-pulse rounded-xl bg-slate-200"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {:else if tryouts.length === 0}
+    <!-- Global empty state -->
+    <div
+      class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center"
+    >
+      <div
+        class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#0c438c]"
+      >
+        <svg
+          class="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M8 6h8" />
+          <path d="M8 10h8" />
+          <path d="M8 14h5" />
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+        </svg>
+      </div>
+
+      <h3 class="mt-4 text-lg font-black text-slate-950">Belum ada tryout</h3>
+
+      <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+        Belum ada tryout yang sedang dibuka. Jika sudah mendapat kode dari guru,
+        kamu tetap dapat memasukkannya di atas.
       </p>
     </div>
   {:else}
-    <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {#each tryouts as tryout}
-        {@const disabledReason = getStartDisabledReason(tryout)}
-
-        <article
-          class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+    <!-- Tabs -->
+    <div
+      class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
+      <div
+        class="flex overflow-x-auto border-b border-slate-200 px-2 sm:px-4"
+        role="tablist"
+        aria-label="Kategori tryout"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "MY"}
+          onclick={() => selectTab("MY")}
+          class={`relative flex min-w-max items-center gap-2 px-4 py-4 text-sm font-bold transition sm:px-5 ${
+            activeTab === "MY"
+              ? "text-[#062b63]"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
         >
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p
-                class="text-sm font-semibold uppercase tracking-wide text-slate-400"
-              >
-                Tryout
-              </p>
+          <svg
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
 
-              <h3 class="mt-1 text-xl font-bold text-slate-950">
-                {tryout.title}
-              </h3>
-            </div>
+          <span>Tryout Saya</span>
 
+          <span
+            class={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+              activeTab === "MY"
+                ? "bg-blue-50 text-[#0c438c]"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {myTryouts.length}
+          </span>
+
+          {#if activeTab === "MY"}
             <span
-              class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
+              class="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[#0c438c]"
+            ></span>
+          {/if}
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "AVAILABLE"}
+          onclick={() => selectTab("AVAILABLE")}
+          class={`relative flex min-w-max items-center gap-2 px-4 py-4 text-sm font-bold transition sm:px-5 ${
+            activeTab === "AVAILABLE"
+              ? "text-[#062b63]"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <svg
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v8" />
+            <path d="M8 12h8" />
+          </svg>
+
+          <span>Belum Bergabung</span>
+
+          <span
+            class={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+              activeTab === "AVAILABLE"
+                ? "bg-blue-50 text-[#0c438c]"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {availableTryouts.length}
+          </span>
+
+          {#if pendingTryoutsCount > 0}
+            <span
+              class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700"
             >
-              Dibuka
+              {pendingTryoutsCount} menunggu
             </span>
-          </div>
+          {/if}
 
-          <div class="mt-3 space-y-1">
-            <p class="text-sm text-slate-500">
-              Bank soal:
-              <span class="font-semibold text-slate-700">
-                {tryout.bank.name}
-              </span>
-            </p>
+          {#if activeTab === "AVAILABLE"}
+            <span
+              class="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[#0c438c]"
+            ></span>
+          {/if}
+        </button>
+      </div>
 
-            <p class="text-sm text-slate-500">
-              Dibuat oleh:
-              <span class="font-semibold text-slate-700">
-                {getOwnerLabel(tryout)}
-              </span>
-            </p>
-          </div>
-
-          <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Status Peserta
+      <!-- Tab summary -->
+      <div class="bg-slate-50/70 px-4 py-3 sm:px-5">
+        {#if activeTab === "MY"}
+          <div
+            class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <p class="text-sm font-bold text-slate-800">
+                Tryout yang sudah kamu ikuti
               </p>
 
+              <p class="mt-0.5 text-xs text-slate-500">
+                Mulai tryout baru atau lanjutkan sesi yang belum selesai.
+              </p>
+            </div>
+
+            {#if myTryouts.length > 0}
               <span
-                class={`rounded-full px-3 py-1 text-xs font-bold ${getEnrollmentStatusBadgeClass(
-                  tryout.enrollmentStatus,
-                )}`}
+                class="mt-2 w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 sm:mt-0"
               >
-                {getEnrollmentStatusLabel(tryout.enrollmentStatus)}
+                {activeTryoutsCount} bisa dikerjakan
               </span>
-            </div>
-
-            <p class="mt-2 text-xs font-semibold text-slate-600">
-              {getEnrollmentDescription(tryout)}
-            </p>
-          </div>
-
-          <div class="mt-5 grid grid-cols-2 gap-3">
-            <div class="rounded-xl bg-slate-50 p-4">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Jumlah Soal
-              </p>
-
-              <p class="mt-1 text-2xl font-bold text-slate-950">
-                {tryout.totalQuestions}
-              </p>
-            </div>
-
-            <div class="rounded-xl bg-slate-50 p-4">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Durasi
-              </p>
-
-              <p class="mt-1 text-2xl font-bold text-slate-950">
-                {tryout.durationMinutes}
-                <span class="text-sm font-semibold text-slate-500">menit</span>
-              </p>
-            </div>
-
-            <div class="rounded-xl bg-slate-50 p-4">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Percobaan
-              </p>
-
-              <p class="mt-1 text-lg font-bold text-slate-950">
-                {tryout.attemptsUsed}
-                <span class="text-sm font-semibold text-slate-500">
-                  terpakai
-                </span>
-              </p>
-            </div>
-
-            <div class="rounded-xl bg-slate-50 p-4">
-              <p
-                class="text-xs font-bold uppercase tracking-wide text-slate-400"
-              >
-                Batas
-              </p>
-
-              <p class="mt-1 text-lg font-bold text-slate-950">
-                {getMaxAttemptsLabel(tryout.maxAttempts)}
-              </p>
-            </div>
-          </div>
-
-          <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p class="text-xs font-semibold text-slate-600">
-              Sisa percobaan:
-              <span class="font-bold text-slate-950">
-                {getAttemptsRemainingLabel(tryout)}
-              </span>
-            </p>
-
-            {#if tryout.ongoingSessionId}
-              <p class="mt-1 text-xs font-semibold text-amber-700">
-                Ada sesi yang sedang berjalan. Kamu bisa melanjutkannya.
-              </p>
-            {:else if tryout.enrollmentStatus === "APPROVED" && !tryout.canStart}
-              <p class="mt-1 text-xs font-semibold text-red-600">
-                Kamu sudah mencapai batas percobaan.
-              </p>
             {/if}
           </div>
-
-          <p class="mt-4 text-xs text-slate-500">
-            Sistem menentukan level awal secara acak. Soal berikutnya dipilih
-            menggunakan Weighted Random Selection.
-          </p>
-
-          {#if disabledReason && !tryout.canRequestJoin}
-            <p
-              class="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600"
-            >
-              {disabledReason}
+        {:else}
+          <div>
+            <p class="text-sm font-bold text-slate-800">
+              Tryout lain yang tersedia
             </p>
-          {/if}
+
+            <p class="mt-0.5 text-xs text-slate-500">
+              Minta akses kepada guru atau tunggu persetujuan jika permintaan
+              sudah dikirim.
+            </p>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Active tab content -->
+    {#if displayedTryouts.length === 0}
+      {#if activeTab === "MY"}
+        <div
+          class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center"
+        >
+          <div
+            class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#0c438c]"
+          >
+            <svg
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M8 6h8" />
+              <path d="M8 10h8" />
+              <path d="M8 14h5" />
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+            </svg>
+          </div>
+
+          <h3 class="mt-4 font-black text-slate-950">Belum ada Tryout Saya</h3>
+
+          <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            Kamu belum bergabung ke tryout mana pun. Cari tryout yang tersedia
+            atau gunakan kode dari guru.
+          </p>
 
           <button
             type="button"
-            disabled={(Boolean(disabledReason) && !tryout.canRequestJoin) ||
-              startingTryoutId === tryout.id ||
-              requestingJoinTryoutId === tryout.id}
-            onclick={() => startTryout(tryout)}
-            class="mt-5 w-full rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={() => selectTab("AVAILABLE")}
+            class="mt-5 rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0c438c]"
           >
-            {#if startingTryoutId === tryout.id}
-              Memulai...
-            {:else if requestingJoinTryoutId === tryout.id}
-              Mengirim...
-            {:else}
-              {getActionLabel(tryout)}
-            {/if}
+            Lihat Tryout Tersedia
           </button>
-        </article>
-      {/each}
+        </div>
+      {:else}
+        <div
+          class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center"
+        >
+          <div
+            class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"
+          >
+            <svg
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="m8 12 2.5 2.5L16 9" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+          </div>
+
+          <h3 class="mt-4 font-black text-slate-950">
+            Semua tryout sudah kamu ikuti
+          </h3>
+
+          <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            Tidak ada tryout lain yang perlu kamu daftarkan saat ini.
+          </p>
+
+          <button
+            type="button"
+            onclick={() => selectTab("MY")}
+            class="mt-5 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700"
+          >
+            Kembali ke Tryout Saya
+          </button>
+        </div>
+      {/if}
+    {:else}
+      <div class="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {#each displayedTryouts as tryout (tryout.id)}
+          <StudentTryoutCard
+            {tryout}
+            starting={startingTryoutId === tryout.id}
+            requesting={requestingJoinTryoutId === tryout.id}
+            onAction={handleTryoutAction}
+          />
+        {/each}
+      </div>
+    {/if}
+
+    <!-- System Information -->
+    <div
+      class="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3.5"
+    >
+      <div
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c]"
+      >
+        <svg
+          class="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5" />
+          <path d="M12 8h.01" />
+        </svg>
+      </div>
+
+      <div>
+        <p class="text-xs font-black text-[#062b63]">
+          Tentang pengerjaan tryout
+        </p>
+
+        <p class="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
+          Sistem menentukan tingkat awal soal secara otomatis dan menyesuaikan
+          pemilihan soal selama pengerjaan berlangsung.
+        </p>
+      </div>
     </div>
   {/if}
 </section>

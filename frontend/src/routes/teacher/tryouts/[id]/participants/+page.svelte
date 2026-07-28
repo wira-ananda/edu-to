@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import TryoutJoinCodeCard from "$lib/components/tryouts/TryoutJoinCodeCard.svelte";
   import {
     getTeacherTryoutParticipantsCached,
     invalidateTeacherTryoutParticipantsCache,
@@ -11,17 +12,17 @@
     invalidateTeacherTryoutStatisticsCache,
     readTeacherTryoutParticipantsCache,
   } from "$lib/cache/teacher-page-cache";
-  import type {
-    EnrollmentStatus,
-    TryoutParticipantAttempt,
-    TryoutParticipantItem,
-  } from "$lib/types/admin";
   import {
     getEnrollmentStatusBadgeClass,
     getEnrollmentStatusLabel,
     getMaxAttemptsLabel,
     getTryoutStatusBadgeClass,
     getTryoutStatusLabel,
+  } from "$lib/types/admin";
+  import type {
+    EnrollmentStatus,
+    TryoutParticipantAttempt,
+    TryoutParticipantItem,
   } from "$lib/types/admin";
   import type {
     TeacherEnrollStudentResponse,
@@ -34,19 +35,22 @@
   let loading = $state(true);
   let refreshing = $state(false);
   let enrolling = $state(false);
+
   let mutatingEnrollmentId = $state("");
-  let copiedCode = $state("");
 
   let errorMessage = $state("");
   let successMessage = $state("");
 
   let studentId = $state("");
+
   let statusFilter = $state<"ALL" | EnrollmentStatus>("ALL");
 
   let data = $state<TeacherTryoutParticipantsResponse | null>(null);
+
   let participants = $state<TryoutParticipantItem[]>([]);
 
   const tryout = $derived(data?.tryout ?? null);
+
   const summary = $derived(data?.summary ?? null);
 
   const filteredParticipants = $derived(
@@ -58,27 +62,22 @@
   );
 
   function formatDate(value: string | null | undefined) {
-    if (!value) {
-      return "-";
-    }
+    if (!value) return "-";
 
-    return new Date(value).toLocaleString("id-ID");
+    return new Date(value).toLocaleString("id-ID", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }
 
   function getAttemptStatusLabel(status: "ONGOING" | "FINISHED") {
-    if (status === "FINISHED") {
-      return "Selesai";
-    }
-
-    return "Berlangsung";
+    return status === "FINISHED" ? "Selesai" : "Berlangsung";
   }
 
   function getAttemptStatusBadgeClass(status: "ONGOING" | "FINISHED") {
-    if (status === "FINISHED") {
-      return "bg-emerald-50 text-emerald-700";
-    }
-
-    return "bg-amber-50 text-amber-700";
+    return status === "FINISHED"
+      ? "bg-emerald-50 text-emerald-700"
+      : "bg-amber-50 text-amber-700";
   }
 
   function getLatestAttempt(participant: TryoutParticipantItem) {
@@ -97,33 +96,16 @@
     return String(attempt.score);
   }
 
-  async function copyJoinCode(joinCode: string | null) {
-    if (!joinCode) {
-      return;
-    }
-
-    errorMessage = "";
-
-    try {
-      await navigator.clipboard.writeText(joinCode);
-
-      copiedCode = joinCode;
-
-      window.setTimeout(() => {
-        if (copiedCode === joinCode) {
-          copiedCode = "";
-        }
-      }, 1500);
-    } catch {
-      errorMessage = "Kode tryout gagal disalin.";
-    }
-  }
-
-  async function loadParticipants(options: { force?: boolean } = {}) {
+  async function loadParticipants(
+    options: {
+      force?: boolean;
+    } = {},
+  ) {
     const force = options.force ?? false;
 
     if (!tryoutId) {
       errorMessage = "Tryout tidak ditemukan.";
+
       loading = false;
       return;
     }
@@ -136,7 +118,9 @@
 
     if (cachedData) {
       data = cachedData;
+
       participants = cachedData.participants;
+
       loading = false;
       return;
     }
@@ -160,8 +144,11 @@
 
   function invalidateParticipantMutationCaches() {
     invalidateTeacherTryoutsCache();
+
     invalidateTeacherTryoutParticipantsCache(tryoutId);
+
     invalidateTeacherTryoutResultsCache(tryoutId);
+
     invalidateTeacherTryoutStatisticsCache(tryoutId);
   }
 
@@ -169,7 +156,6 @@
     refreshing = true;
     successMessage = "";
 
-    invalidateTeacherTryoutsCache();
     invalidateTeacherTryoutParticipantsCache(tryoutId);
 
     try {
@@ -188,10 +174,12 @@
 
     if (!cleanedStudentId) {
       errorMessage = "Student ID wajib diisi.";
+
       return;
     }
 
     enrolling = true;
+
     errorMessage = "";
     successMessage = "";
 
@@ -204,6 +192,7 @@
       );
 
       successMessage = result.message;
+
       studentId = "";
 
       invalidateParticipantMutationCaches();
@@ -213,9 +202,7 @@
       });
     } catch (error) {
       errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Gagal memasukkan siswa ke tryout.";
+        error instanceof Error ? error.message : "Gagal menambahkan peserta.";
     } finally {
       enrolling = false;
     }
@@ -223,6 +210,7 @@
 
   async function approveEnrollment(enrollmentId: string) {
     mutatingEnrollmentId = enrollmentId;
+
     errorMessage = "";
     successMessage = "";
 
@@ -250,13 +238,12 @@
   }
 
   async function rejectEnrollment(enrollmentId: string) {
-    const confirmed = confirm("Tolak peserta ini?");
+    const confirmed = confirm("Tolak permintaan peserta ini?");
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     mutatingEnrollmentId = enrollmentId;
+
     errorMessage = "";
     successMessage = "";
 
@@ -288,32 +275,34 @@
   });
 </script>
 
-<section class="space-y-5">
+<section class="space-y-6">
   <div
-    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+    class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Peserta Tryout</h2>
+      <button
+        type="button"
+        onclick={() => goto("/teacher/tryouts")}
+        class="mb-3 inline-flex items-center gap-2 text-sm font-bold text-[#0c438c]"
+      >
+        ← Kembali ke Tryout
+      </button>
+
+      <h2 class="text-2xl font-black tracking-tight text-slate-950">
+        Peserta Tryout
+      </h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Kelola siswa yang mendaftar atau sudah menjadi peserta tryout milikmu.
+        Kelola permintaan bergabung dan pantau aktivitas peserta.
       </p>
     </div>
 
     <div class="flex flex-wrap gap-2">
       <button
         type="button"
-        onclick={() => goto("/teacher/tryouts")}
-        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700"
-      >
-        Kembali
-      </button>
-
-      <button
-        type="button"
         onclick={refreshParticipants}
         disabled={loading || refreshing}
-        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
       >
         {refreshing ? "Memuat..." : "Refresh"}
       </button>
@@ -322,7 +311,7 @@
         type="button"
         onclick={() => goto(`/teacher/results?tryoutId=${tryoutId}`)}
         disabled={!tryoutId}
-        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+        class="rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
       >
         Lihat Hasil
       </button>
@@ -330,19 +319,19 @@
   </div>
 
   {#if errorMessage}
-    <p
-      class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+    <div
+      class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
       {errorMessage}
-    </p>
+    </div>
   {/if}
 
   {#if successMessage}
-    <p
-      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    <div
+      class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
     >
       {successMessage}
-    </p>
+    </div>
   {/if}
 
   {#if loading}
@@ -350,256 +339,266 @@
       <p class="text-sm font-semibold text-slate-500">Memuat peserta...</p>
     </div>
   {:else if !tryout || !summary}
-    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-700">
-        Data tryout tidak ditemukan.
-      </p>
+    <div class="rounded-2xl border border-slate-200 bg-white p-8">
+      Data tryout tidak ditemukan.
     </div>
   {:else}
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <!-- Tryout information -->
+    <div class="grid gap-4 xl:grid-cols-[1fr_0.75fr]">
       <div
-        class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+        class="relative overflow-hidden rounded-2xl bg-[#062b63] p-6 text-white"
       >
-        <div>
-          <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
-            Tryout
-          </p>
+        <div
+          class="absolute -right-16 -top-20 h-48 w-48 rotate-12 rounded-[50px] bg-[#0c438c]"
+        ></div>
 
-          <h3 class="mt-1 text-xl font-bold text-slate-950">
-            {tryout.title}
-          </h3>
-
-          <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+        <div class="relative z-10">
+          <div class="flex flex-wrap gap-2">
             <span
-              class={`rounded-full px-3 py-1 ${getTryoutStatusBadgeClass(
+              class={`rounded-full px-3 py-1 text-xs font-bold ${getTryoutStatusBadgeClass(
                 tryout.status,
               )}`}
             >
               {getTryoutStatusLabel(tryout.status)}
             </span>
 
-            <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-              Percobaan: {getMaxAttemptsLabel(tryout.maxAttempts)}
+            <span
+              class="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-blue-100"
+            >
+              {getMaxAttemptsLabel(tryout.maxAttempts)}
             </span>
           </div>
 
-          <div
-            class="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3"
+          <p
+            class="mt-6 text-xs font-black uppercase tracking-[0.16em] text-blue-200"
           >
-            <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
-              Kode Join
-            </p>
+            Tryout
+          </p>
 
-            {#if tryout.joinCode}
-              <code
-                class="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-bold tracking-[0.18em] text-white"
-              >
-                {tryout.joinCode}
-              </code>
-
-              <span
-                class={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                  tryout.joinCodeEnabled
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-red-50 text-red-600"
-                }`}
-              >
-                {tryout.joinCodeEnabled ? "Aktif" : "Nonaktif"}
-              </span>
-
-              <button
-                type="button"
-                onclick={() => copyJoinCode(tryout.joinCode)}
-                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
-              >
-                {copiedCode === tryout.joinCode ? "Tersalin" : "Salin"}
-              </button>
-            {:else}
-              <span class="text-xs font-semibold text-slate-400">
-                Belum memiliki kode
-              </span>
-            {/if}
-          </div>
+          <h3 class="mt-1 text-2xl font-black">
+            {tryout.title}
+          </h3>
         </div>
-
-        <form
-          onsubmit={enrollStudent}
-          class="flex w-full flex-col gap-2 lg:max-w-xl lg:flex-row"
-        >
-          <input
-            bind:value={studentId}
-            disabled={enrolling}
-            placeholder="Masukkan Student ID untuk direct enroll"
-            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
-          />
-
-          <button
-            type="submit"
-            disabled={enrolling || !studentId.trim()}
-            class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {enrolling ? "Memasukkan..." : "Tambah Peserta"}
-          </button>
-        </form>
       </div>
+
+      <TryoutJoinCodeCard
+        joinCode={tryout.joinCode}
+        enabled={tryout.joinCodeEnabled}
+      />
     </div>
 
-    <div class="grid gap-4 md:grid-cols-4">
+    <!-- Summary -->
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Total Enrollment</p>
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
+          Total Enrollment
+        </p>
 
-        <p class="mt-2 text-3xl font-bold text-slate-950">
+        <p class="mt-2 text-3xl font-black text-slate-950">
           {summary.totalEnrollments}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Disetujui</p>
+      <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-600">
+          Disetujui
+        </p>
 
-        <p class="mt-2 text-3xl font-bold text-emerald-700">
+        <p class="mt-2 text-3xl font-black text-emerald-700">
           {summary.totalParticipants}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Menunggu</p>
+      <div class="rounded-2xl border border-amber-100 bg-amber-50 p-5">
+        <p class="text-xs font-bold uppercase tracking-wide text-amber-600">
+          Menunggu
+        </p>
 
-        <p class="mt-2 text-3xl font-bold text-amber-700">
+        <p class="mt-2 text-3xl font-black text-amber-700">
           {summary.pendingRequests}
         </p>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Ditolak</p>
+      <div class="rounded-2xl border border-red-100 bg-red-50 p-5">
+        <p class="text-xs font-bold uppercase tracking-wide text-red-500">
+          Ditolak
+        </p>
 
-        <p class="mt-2 text-3xl font-bold text-red-700">
+        <p class="mt-2 text-3xl font-black text-red-600">
           {summary.rejectedParticipants}
         </p>
       </div>
     </div>
 
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <!-- Manual enrollment -->
+    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div
-        class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
       >
         <div>
-          <h3 class="text-lg font-bold text-slate-950">Daftar Peserta</h3>
+          <h3 class="text-base font-black text-slate-950">
+            Tambah Peserta Manual
+          </h3>
 
           <p class="mt-1 text-sm text-slate-500">
-            Total tampil: {filteredParticipants.length}
+            Gunakan Student ID jika ingin memasukkan siswa tanpa permintaan
+            join.
           </p>
         </div>
 
-        <div class="flex items-center gap-2">
-          <label for="statusFilter" class="text-sm font-bold text-slate-700">
-            Filter Status
-          </label>
+        <form
+          onsubmit={enrollStudent}
+          class="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl"
+        >
+          <input
+            bind:value={studentId}
+            disabled={enrolling}
+            placeholder="Masukkan Student ID"
+            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-[#0c438c] focus:bg-white"
+          />
 
-          <select
-            id="statusFilter"
-            bind:value={statusFilter}
-            class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white"
+          <button
+            type="submit"
+            disabled={enrolling || !studentId.trim()}
+            class="rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
-            <option value="ALL">Semua</option>
-            <option value="PENDING">Menunggu</option>
-            <option value="APPROVED">Disetujui</option>
-            <option value="REJECTED">Ditolak</option>
-          </select>
+            {enrolling ? "Menambahkan..." : "Tambah Peserta"}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Participant list -->
+    <section class="space-y-4">
+      <div
+        class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+      >
+        <div>
+          <h3 class="text-lg font-black text-slate-950">Daftar Peserta</h3>
+
+          <p class="mt-1 text-sm text-slate-500">
+            {filteredParticipants.length}
+            peserta ditampilkan.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          {#each [{ value: "ALL", label: "Semua" }, { value: "PENDING", label: "Menunggu" }, { value: "APPROVED", label: "Disetujui" }, { value: "REJECTED", label: "Ditolak" }] as filter}
+            <button
+              type="button"
+              onclick={() =>
+                (statusFilter = filter.value as "ALL" | EnrollmentStatus)}
+              class={`rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                statusFilter === filter.value
+                  ? "bg-[#062b63] text-white"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {filter.label}
+            </button>
+          {/each}
         </div>
       </div>
 
-      <div class="mt-5 overflow-hidden rounded-xl border border-slate-200">
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[1120px] text-left text-sm">
-            <thead
-              class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
+      {#if filteredParticipants.length === 0}
+        <div
+          class="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm font-semibold text-slate-500"
+        >
+          Belum ada peserta dengan status ini.
+        </div>
+      {:else}
+        <div class="space-y-3">
+          {#each filteredParticipants as participant}
+            {@const latestAttempt = getLatestAttempt(participant)}
+
+            <article
+              class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
             >
-              <tr>
-                <th class="px-5 py-4">Siswa</th>
-                <th class="px-5 py-4">Status</th>
-                <th class="px-5 py-4">Tanggal</th>
-                <th class="px-5 py-4">Attempt</th>
-                <th class="px-5 py-4">Nilai Terakhir</th>
-                <th class="px-5 py-4">Progress</th>
-                <th class="px-5 py-4">Aksi</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {#if filteredParticipants.length === 0}
-                <tr>
-                  <td colspan="7" class="px-5 py-10 text-center text-slate-500">
-                    Belum ada peserta dengan status ini.
-                  </td>
-                </tr>
-              {:else}
-                {#each filteredParticipants as participant}
-                  {@const latestAttempt = getLatestAttempt(participant)}
-
-                  <tr class="border-t border-slate-100">
-                    <td class="px-5 py-4">
-                      <p class="font-bold text-slate-900">
+              <div
+                class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 class="font-black text-slate-950">
                         {participant.student.name}
-                      </p>
+                      </h4>
 
-                      <p class="text-xs text-slate-400">
+                      <p class="mt-1 text-sm text-slate-500">
                         {participant.student.email}
                       </p>
 
-                      <p class="text-xs text-slate-400">
-                        {participant.student.school ?? "-"} ·
+                      <p class="mt-0.5 text-xs text-slate-400">
+                        {participant.student.school ?? "-"}
+                        ·
                         {participant.student.className ?? "-"}
                       </p>
+                    </div>
 
-                      <p class="mt-1 text-[11px] font-semibold text-slate-400">
-                        ID: {participant.student.id}
+                    <span
+                      class={`rounded-full px-3 py-1 text-xs font-bold ${getEnrollmentStatusBadgeClass(
+                        participant.status,
+                      )}`}
+                    >
+                      {getEnrollmentStatusLabel(participant.status)}
+                    </span>
+                  </div>
+
+                  <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-xl bg-slate-50 p-3">
+                      <p class="text-[10px] font-bold uppercase text-slate-400">
+                        Percobaan
                       </p>
-                    </td>
 
-                    <td class="px-5 py-4">
-                      <span
-                        class={`rounded-full px-3 py-1 text-xs font-bold ${getEnrollmentStatusBadgeClass(
-                          participant.status,
-                        )}`}
+                      <p class="mt-1 text-lg font-black text-slate-950">
+                        {participant.attempts.length}
+                      </p>
+                    </div>
+
+                    <div class="rounded-xl bg-slate-50 p-3">
+                      <p class="text-[10px] font-bold uppercase text-slate-400">
+                        Nilai Terakhir
+                      </p>
+
+                      <p class="mt-1 text-lg font-black text-[#0c438c]">
+                        {getAttemptScoreLabel(latestAttempt)}
+                      </p>
+                    </div>
+
+                    <div class="rounded-xl bg-slate-50 p-3">
+                      <p class="text-[10px] font-bold uppercase text-slate-400">
+                        Bergabung
+                      </p>
+
+                      <p class="mt-1 text-xs font-bold text-slate-600">
+                        {formatDate(participant.requestedAt)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {#if participant.attempts.length > 0}
+                    <details
+                      class="mt-4 rounded-xl border border-slate-200 bg-slate-50"
+                    >
+                      <summary
+                        class="cursor-pointer px-4 py-3 text-sm font-bold text-slate-700"
                       >
-                        {getEnrollmentStatusLabel(participant.status)}
-                      </span>
-                    </td>
+                        Lihat riwayat percobaan ({participant.attempts.length})
+                      </summary>
 
-                    <td class="px-5 py-4 text-xs text-slate-500">
-                      <p>Request: {formatDate(participant.requestedAt)}</p>
-                      <p>Approve: {formatDate(participant.approvedAt)}</p>
-                      <p>Reject: {formatDate(participant.rejectedAt)}</p>
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-slate-900">
-                      {participant.attempts.length}
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-blue-900">
-                      {getAttemptScoreLabel(latestAttempt)}
-                    </td>
-
-                    <td class="px-5 py-4">
-                      {#if participant.attempts.length === 0}
-                        <p class="text-xs font-semibold text-slate-400">
-                          Belum mengerjakan.
-                        </p>
-                      {:else}
-                        <div class="flex flex-col gap-2">
-                          {#each participant.attempts as attempt}
-                            <div
-                              class="rounded-lg border border-slate-100 bg-slate-50 p-2"
-                            >
-                              <div
-                                class="flex items-center justify-between gap-2"
-                              >
-                                <p class="text-xs font-bold text-slate-800">
-                                  Attempt #{attempt.attemptNumber}
+                      <div class="space-y-2 border-t border-slate-200 p-3">
+                        {#each participant.attempts as attempt}
+                          <div
+                            class="flex flex-col gap-2 rounded-xl bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <div class="flex items-center gap-2">
+                                <p class="text-xs font-black text-slate-900">
+                                  Percobaan #{attempt.attemptNumber}
                                 </p>
 
                                 <span
-                                  class={`rounded-full px-2 py-0.5 text-[11px] font-bold ${getAttemptStatusBadgeClass(
+                                  class={`rounded-full px-2 py-0.5 text-[10px] font-bold ${getAttemptStatusBadgeClass(
                                     attempt.status,
                                   )}`}
                                 >
@@ -608,52 +607,52 @@
                               </div>
 
                               <p class="mt-1 text-xs text-slate-500">
-                                Nilai: {attempt.score} · Benar:
-                                {attempt.correctCount} · Salah:
+                                {attempt.answeredCount}/{attempt.totalQuestions}
+                                dijawab · Benar
+                                {attempt.correctCount}
+                                · Salah
                                 {attempt.wrongCount}
                               </p>
-
-                              <p class="text-xs text-slate-500">
-                                Progress: {attempt.answeredCount}/{attempt.totalQuestions}
-                              </p>
                             </div>
-                          {/each}
-                        </div>
-                      {/if}
-                    </td>
 
-                    <td class="px-5 py-4">
-                      <div class="flex flex-wrap gap-2">
-                        {#if participant.status !== "APPROVED"}
-                          <button
-                            type="button"
-                            disabled={mutatingEnrollmentId === participant.id}
-                            onclick={() => approveEnrollment(participant.id)}
-                            class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-50"
-                          >
-                            Approve
-                          </button>
-                        {/if}
-
-                        {#if participant.status !== "REJECTED"}
-                          <button
-                            type="button"
-                            disabled={mutatingEnrollmentId === participant.id}
-                            onclick={() => rejectEnrollment(participant.id)}
-                            class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                        {/if}
+                            <p class="text-xl font-black text-[#0c438c]">
+                              {attempt.score}
+                            </p>
+                          </div>
+                        {/each}
                       </div>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
+                    </details>
+                  {/if}
+                </div>
+
+                <div class="flex shrink-0 flex-wrap gap-2 xl:w-40 xl:flex-col">
+                  {#if participant.status !== "APPROVED"}
+                    <button
+                      type="button"
+                      disabled={mutatingEnrollmentId === participant.id}
+                      onclick={() => approveEnrollment(participant.id)}
+                      class="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      Setujui
+                    </button>
+                  {/if}
+
+                  {#if participant.status !== "REJECTED"}
+                    <button
+                      type="button"
+                      disabled={mutatingEnrollmentId === participant.id}
+                      onclick={() => rejectEnrollment(participant.id)}
+                      class="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Tolak
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            </article>
+          {/each}
         </div>
-      </div>
-    </div>
+      {/if}
+    </section>
   {/if}
 </section>

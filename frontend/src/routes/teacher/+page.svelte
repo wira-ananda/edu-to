@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
+  import RoleDashboard from "$lib/components/dashboard/RoleDashboard.svelte";
   import {
     getTeacherQuestionBanksCached,
     getTeacherQuestionsCached,
@@ -14,6 +14,7 @@
     TeacherQuestionsResponse,
     TeacherTryoutsResponse,
   } from "$lib/types/teacher";
+  import type { DashboardAction, DashboardCard } from "$lib/types/dashboard";
 
   let loading = $state(true);
   let errorMessage = $state("");
@@ -23,6 +24,58 @@
   let totalTryouts = $state(0);
   let openTryouts = $state(0);
 
+  const cards = $derived.by<DashboardCard[]>(() => [
+    {
+      label: "Bank Soal",
+      value: totalBanks,
+      description: "Bank soal yang kamu kelola.",
+      tone: "default",
+    },
+    {
+      label: "Total Soal",
+      value: totalQuestions,
+      description: "Soal yang tersedia di seluruh bank.",
+      tone: "blue",
+    },
+    {
+      label: "Total Tryout",
+      value: totalTryouts,
+      description: "Seluruh tryout yang sudah dibuat.",
+      tone: "yellow",
+    },
+    {
+      label: "Tryout Dibuka",
+      value: openTryouts,
+      description: "Tryout yang saat ini dapat diakses siswa.",
+      tone: "green",
+    },
+  ]);
+
+  const actions: DashboardAction[] = [
+    {
+      title: "Kelola Bank Soal",
+      description:
+        "Kelola bank soal serta tambah, edit, atau hapus soal milikmu.",
+      href: "/teacher/questions",
+      label: "Buka Bank Soal",
+      primary: true,
+    },
+    {
+      title: "Kelola Tryout",
+      description:
+        "Atur tryout, kode bergabung, status, peserta, dan percobaan siswa.",
+      href: "/teacher/tryouts",
+      label: "Buka Tryout",
+    },
+    {
+      title: "Hasil Siswa",
+      description:
+        "Pantau hasil pengerjaan dan perkembangan nilai peserta tryout.",
+      href: "/teacher/results",
+      label: "Lihat Hasil",
+    },
+  ];
+
   function applyDashboardData(
     banks: TeacherQuestionBanksResponse["banks"],
     questions: TeacherQuestionsResponse["questions"],
@@ -31,6 +84,7 @@
     totalBanks = banks.length;
     totalQuestions = questions.length;
     totalTryouts = tryouts.length;
+
     openTryouts = tryouts.filter((tryout) => tryout.status === "OPEN").length;
   }
 
@@ -43,11 +97,12 @@
 
     if (cachedBanks && cachedQuestions && cachedTryouts) {
       applyDashboardData(cachedBanks, cachedQuestions, cachedTryouts);
+
       loading = false;
       return;
     }
 
-    loading = !cachedBanks && !cachedQuestions && !cachedTryouts;
+    loading = true;
 
     try {
       const [banks, questions, tryouts] = await Promise.all([
@@ -70,98 +125,11 @@
   });
 </script>
 
-<section class="space-y-6">
-  <div>
-    <h2 class="text-2xl font-bold text-slate-950">Dashboard Guru</h2>
-
-    <p class="mt-1 text-sm text-slate-500">
-      Kelola bank soal, soal, tryout, dan hasil siswa dari data milikmu.
-    </p>
-  </div>
-
-  {#if errorMessage}
-    <p
-      class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
-    >
-      {errorMessage}
-    </p>
-  {/if}
-
-  {#if loading}
-    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-500">Memuat dashboard...</p>
-    </div>
-  {:else}
-    <div class="grid gap-4 md:grid-cols-4">
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Bank Soal</p>
-
-        <p class="mt-2 text-3xl font-black text-slate-950">
-          {totalBanks}
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Total Soal</p>
-
-        <p class="mt-2 text-3xl font-black text-blue-900">
-          {totalQuestions}
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Total Tryout</p>
-
-        <p class="mt-2 text-3xl font-black text-slate-950">
-          {totalTryouts}
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Tryout Dibuka</p>
-
-        <p class="mt-2 text-3xl font-black text-emerald-700">
-          {openTryouts}
-        </p>
-      </div>
-    </div>
-
-    <div class="grid gap-4 md:grid-cols-3">
-      <button
-        type="button"
-        onclick={() => goto("/teacher/questions")}
-        class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-      >
-        <p class="text-lg font-bold text-slate-950">Kelola Bank Soal</p>
-
-        <p class="mt-2 text-sm text-slate-500">
-          Buat bank soal dan tambah soal milikmu.
-        </p>
-      </button>
-
-      <button
-        type="button"
-        onclick={() => goto("/teacher/tryouts/new")}
-        class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-      >
-        <p class="text-lg font-bold text-slate-950">Buat Tryout</p>
-
-        <p class="mt-2 text-sm text-slate-500">
-          Atur jumlah soal, durasi, percobaan, dan status tryout.
-        </p>
-      </button>
-
-      <button
-        type="button"
-        onclick={() => goto("/teacher/results")}
-        class="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-      >
-        <p class="text-lg font-bold text-slate-950">Lihat Hasil Siswa</p>
-
-        <p class="mt-2 text-sm text-slate-500">
-          Pantau nilai dan progress siswa pada tryout milikmu.
-        </p>
-      </button>
-    </div>
-  {/if}
-</section>
+<RoleDashboard
+  title="Dashboard Guru"
+  description="Kelola bank soal, tryout, peserta, dan pantau perkembangan hasil siswa dari data milikmu."
+  {cards}
+  {actions}
+  {loading}
+  {errorMessage}
+/>

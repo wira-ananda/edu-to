@@ -233,6 +233,22 @@ async function createSubject(c: TeacherContext) {
   }
 }
 
+async function deleteSubject(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const result = await teacherService.deleteSubject(user.id, id);
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal menghapus bank soal.");
+  }
+}
+
 async function analyzeQuestion(c: TeacherContext) {
   try {
     const body = await c.req.json().catch(() => null);
@@ -762,6 +778,7 @@ export default {
   getTryouts,
   getTryoutById,
   createTryout,
+  deleteSubject,
   updateTryout,
   updateTryoutStatus,
   regenerateTryoutJoinCode,

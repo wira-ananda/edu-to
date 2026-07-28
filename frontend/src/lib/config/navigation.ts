@@ -2,7 +2,7 @@ import type { AppNavGroup } from "$lib/types/navigation";
 
 export const adminNavGroups: AppNavGroup[] = [
   {
-    label: "Overview",
+    label: "Utama",
     items: [
       {
         label: "Dashboard",
@@ -12,47 +12,32 @@ export const adminNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    label: "Manajemen Soal",
+    label: "Pembelajaran",
     items: [
       {
         label: "Bank Soal",
         href: "/admin/questions",
         icon: "book-open",
       },
-    ],
-  },
-  {
-    label: "Manajemen Tryout",
-    items: [
       {
-        label: "Daftar Tryout",
+        label: "Tryout",
         href: "/admin/tryouts",
         icon: "file-text",
       },
-      {
-        label: "Buat Tryout",
-        href: "/admin/tryouts/new",
-        icon: "plus-circle",
-      },
     ],
   },
   {
-    label: "Manajemen Guru",
+    label: "Pengguna",
     items: [
       {
-        label: "Daftar Guru",
+        label: "Guru",
         href: "/admin/users",
         icon: "user",
       },
-      {
-        label: "Buat Guru",
-        href: "/admin/users/new",
-        icon: "plus-circle",
-      },
     ],
   },
   {
-    label: "Sistem",
+    label: "Akun",
     items: [
       {
         label: "Pengaturan",
@@ -65,7 +50,7 @@ export const adminNavGroups: AppNavGroup[] = [
 
 export const teacherNavGroups: AppNavGroup[] = [
   {
-    label: "Overview",
+    label: "Utama",
     items: [
       {
         label: "Dashboard",
@@ -75,33 +60,18 @@ export const teacherNavGroups: AppNavGroup[] = [
     ],
   },
   {
-    label: "Manajemen Soal",
+    label: "Pembelajaran",
     items: [
       {
         label: "Bank Soal",
         href: "/teacher/questions",
         icon: "book-open",
       },
-    ],
-  },
-  {
-    label: "Manajemen Tryout",
-    items: [
       {
-        label: "Daftar Tryout",
+        label: "Tryout",
         href: "/teacher/tryouts",
         icon: "file-text",
       },
-      {
-        label: "Buat Tryout",
-        href: "/teacher/tryouts/new",
-        icon: "plus-circle",
-      },
-    ],
-  },
-  {
-    label: "Analitik",
-    items: [
       {
         label: "Hasil Siswa",
         href: "/teacher/results",
@@ -123,7 +93,7 @@ export const teacherNavGroups: AppNavGroup[] = [
 
 export const studentNavGroups: AppNavGroup[] = [
   {
-    label: "Overview",
+    label: "Utama",
     items: [
       {
         label: "Dashboard",
@@ -141,7 +111,7 @@ export const studentNavGroups: AppNavGroup[] = [
         icon: "play-circle",
       },
       {
-        label: "Riwayat Tryout",
+        label: "Riwayat",
         href: "/student/history",
         icon: "history",
       },

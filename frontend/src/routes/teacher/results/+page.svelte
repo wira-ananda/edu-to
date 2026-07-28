@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
+
   import {
     getTeacherTryoutResultsCached,
     getTeacherTryoutsCached,
@@ -13,11 +14,17 @@
     readTeacherTryoutsCache,
     readTeacherTryoutStatisticsCache,
   } from "$lib/cache/teacher-page-cache";
+
+  import ResultMetricCard from "$lib/components/results/ResultMetricCard.svelte";
+  import SessionResultsTable from "$lib/components/results/SessionResultsTable.svelte";
+  import TryoutProgressChart from "$lib/components/results/TryoutProgressChart.svelte";
+
   import type {
     TeacherTryoutResultsResponse,
     TeacherTryoutsResponse,
     TeacherTryoutStatisticsResponse,
   } from "$lib/types/teacher";
+
   import {
     getMaxAttemptsLabel,
     getTryoutStatusBadgeClass,
@@ -26,10 +33,13 @@
 
   let loading = $state(true);
   let loadingResults = $state(false);
+  let refreshing = $state(false);
+
   let errorMessage = $state("");
 
   let tryouts = $state<TeacherTryoutsResponse["tryouts"]>([]);
   let selectedTryoutId = $state("");
+
   let sessions = $state<TeacherTryoutResultsResponse["sessions"]>([]);
   let statistics = $state<TeacherTryoutStatisticsResponse | null>(null);
 
@@ -37,43 +47,98 @@
     tryouts.find((tryout) => tryout.id === selectedTryoutId) ?? null,
   );
 
-  function getTrendLabel(
-    trend: "IMPROVING" | "DECLINING" | "STABLE" | "NO_DATA" | undefined,
-  ) {
-    if (trend === "IMPROVING") return "Meningkat";
-    if (trend === "DECLINING") return "Menurun";
-    if (trend === "STABLE") return "Stabil";
+  const progressCurve = $derived(statistics?.progressCurve ?? []);
+
+  const ongoingSessions = $derived(
+    sessions.filter((session) => session.status === "ONGOING").length,
+  );
+
+  const trend = $derived(statistics?.summary.trend ?? "NO_DATA");
+
+  const trendLabel = $derived.by(() => {
+    if (trend === "IMPROVING") {
+      return "Meningkat";
+    }
+
+    if (trend === "DECLINING") {
+      return "Menurun";
+    }
+
+    if (trend === "STABLE") {
+      return "Stabil";
+    }
 
     return "Belum ada data";
-  }
+  });
 
-  function getTrendClass(
-    trend: "IMPROVING" | "DECLINING" | "STABLE" | "NO_DATA" | undefined,
-  ) {
-    if (trend === "IMPROVING") return "bg-emerald-50 text-emerald-700";
-    if (trend === "DECLINING") return "bg-red-50 text-red-700";
-    if (trend === "STABLE") return "bg-blue-50 text-blue-900";
+  const trendTone = $derived.by(
+    (): "default" | "blue" | "green" | "amber" | "red" => {
+      if (trend === "IMPROVING") {
+        return "green";
+      }
 
-    return "bg-slate-100 text-slate-700";
-  }
+      if (trend === "DECLINING") {
+        return "red";
+      }
+
+      if (trend === "STABLE") {
+        return "blue";
+      }
+
+      return "default";
+    },
+  );
+
+  const trendDescription = $derived.by(() => {
+    if (progressCurve.length === 0) {
+      return "Belum ada percobaan yang selesai.";
+    }
+
+    if (progressCurve.length === 1) {
+      return `Rata-rata percobaan pertama ${progressCurve[0]?.averageScore ?? 0}.`;
+    }
+
+    const first = progressCurve[0]?.averageScore ?? 0;
+    const latest = progressCurve[progressCurve.length - 1]?.averageScore ?? 0;
+
+    const difference = latest - first;
+
+    if (difference > 0) {
+      return `Naik ${difference} poin, dari ${first} menjadi ${latest}.`;
+    }
+
+    if (difference < 0) {
+      return `Turun ${Math.abs(difference)} poin, dari ${first} menjadi ${latest}.`;
+    }
+
+    return `Tetap pada rata-rata ${latest}.`;
+  });
 
   function resolveSelectedTryout() {
+    /*
+     * Prioritaskan pilihan user saat ini.
+     * Ini mencegah refresh mengembalikan pilihan ke query lama.
+     */
+    const currentTryout = tryouts.find(
+      (tryout) => tryout.id === selectedTryoutId,
+    );
+
+    if (currentTryout) {
+      return;
+    }
+
     const queryTryoutId = page.url.searchParams.get("tryoutId");
 
     const tryoutFromQuery = tryouts.find(
       (tryout) => tryout.id === queryTryoutId,
     );
 
-    const previousTryout = tryouts.find(
-      (tryout) => tryout.id === selectedTryoutId,
-    );
-
-    selectedTryoutId =
-      tryoutFromQuery?.id ?? previousTryout?.id ?? tryouts[0]?.id ?? "";
+    selectedTryoutId = tryoutFromQuery?.id ?? tryouts[0]?.id ?? "";
   }
 
   async function loadTryouts(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
+
     const cachedTryouts = !force ? readTeacherTryoutsCache() : null;
 
     if (cachedTryouts) {
@@ -91,6 +156,7 @@
 
   async function loadResults(options: { force?: boolean } = {}) {
     const force = options.force ?? false;
+
     const requestedTryoutId = selectedTryoutId;
 
     if (!requestedTryoutId) {
@@ -110,12 +176,23 @@
       ? readTeacherTryoutStatisticsCache(requestedTryoutId)
       : null;
 
+    /*
+     * Pakai cache langsung jika tersedia.
+     */
     if (cachedResults) {
       sessions = cachedResults.sessions;
+    } else {
+      /*
+       * Jangan tampilkan data dari tryout sebelumnya saat
+       * user memilih tryout baru.
+       */
+      sessions = [];
     }
 
     if (cachedStatistics) {
       statistics = cachedStatistics;
+    } else {
+      statistics = null;
     }
 
     if (cachedResults && cachedStatistics) {
@@ -123,18 +200,24 @@
       return;
     }
 
-    loadingResults = sessions.length === 0 && statistics === null;
+    loadingResults = true;
 
     try {
       const [resultsResult, statisticsResult] = await Promise.all([
         getTeacherTryoutResultsCached(requestedTryoutId, {
           force,
         }),
+
         getTeacherTryoutStatisticsCached(requestedTryoutId, {
           force,
         }),
       ]);
 
+      /*
+       * Proteksi race condition:
+       * jika user sudah memilih tryout lain ketika request selesai,
+       * response lama tidak boleh menimpa layar.
+       */
       if (selectedTryoutId !== requestedTryoutId) {
         return;
       }
@@ -142,8 +225,10 @@
       sessions = resultsResult.sessions;
       statistics = statisticsResult;
     } catch (error) {
-      errorMessage =
-        error instanceof Error ? error.message : "Gagal memuat hasil siswa.";
+      if (selectedTryoutId === requestedTryoutId) {
+        errorMessage =
+          error instanceof Error ? error.message : "Gagal memuat hasil siswa.";
+      }
     } finally {
       if (selectedTryoutId === requestedTryoutId) {
         loadingResults = false;
@@ -154,17 +239,37 @@
   async function handleTryoutChange(event: Event) {
     const select = event.currentTarget as HTMLSelectElement;
 
-    selectedTryoutId = select.value;
-    sessions = [];
-    statistics = null;
+    const nextTryoutId = select.value;
+
+    if (!nextTryoutId || nextTryoutId === selectedTryoutId) {
+      return;
+    }
+
+    selectedTryoutId = nextTryoutId;
+
+    /*
+     * Simpan tryout aktif ke URL.
+     * Jadi halaman dapat dibuka kembali / dishare dengan konteks yang sama.
+     */
+    await goto(
+      `/teacher/results?tryoutId=${encodeURIComponent(nextTryoutId)}`,
+      {
+        replaceState: true,
+        noScroll: true,
+        keepFocus: true,
+      },
+    );
 
     await loadResults();
   }
 
   async function refreshResults() {
-    if (!selectedTryoutId) {
+    if (!selectedTryoutId || refreshing) {
       return;
     }
+
+    refreshing = true;
+    errorMessage = "";
 
     const currentTryoutId = selectedTryoutId;
 
@@ -187,6 +292,8 @@
     } catch (error) {
       errorMessage =
         error instanceof Error ? error.message : "Gagal memperbarui hasil.";
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -199,7 +306,9 @@
       await loadResults();
     } catch (error) {
       errorMessage =
-        error instanceof Error ? error.message : "Gagal memuat data tryout.";
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat data hasil siswa.";
     } finally {
       loading = false;
     }
@@ -211,361 +320,279 @@
     class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Hasil Siswa</h2>
+      <p class="text-xs font-black uppercase tracking-[0.16em] text-[#123c8c]">
+        Analitik Tryout
+      </p>
+
+      <h2 class="mt-1 text-2xl font-black tracking-tight text-slate-950">
+        Hasil Siswa
+      </h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Lihat hasil pengerjaan siswa pada tryout milikmu.
+        Pantau penyelesaian, nilai, dan perkembangan peserta tryout.
       </p>
     </div>
 
     <button
       type="button"
       onclick={refreshResults}
-      disabled={loading || loadingResults || !selectedTryoutId}
-      class="w-fit rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+      disabled={loading || refreshing || loadingResults || !selectedTryoutId}
+      class="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {loadingResults ? "Memuat..." : "Refresh"}
+      <svg
+        class={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5" />
+        <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
+      </svg>
+
+      {refreshing ? "Memperbarui..." : "Refresh"}
     </button>
   </div>
 
   {#if errorMessage}
-    <p
-      class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+    <div
+      class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
       {errorMessage}
-    </p>
+    </div>
   {/if}
 
   {#if loading}
     <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-500">Memuat hasil siswa...</p>
+      <div class="flex items-center gap-3">
+        <div
+          class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#123c8c]"
+        ></div>
+
+        <p class="text-sm font-semibold text-slate-500">
+          Memuat hasil siswa...
+        </p>
+      </div>
     </div>
   {:else if tryouts.length === 0}
-    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-semibold text-slate-700">Belum ada tryout.</p>
+    <div
+      class="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"
+    >
+      <div
+        class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"
+      >
+        <svg
+          class="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="m7 15 4-4 3 2 5-6" />
+        </svg>
+      </div>
 
-      <p class="mt-2 text-sm text-slate-500">
-        Buat tryout terlebih dahulu untuk melihat hasil siswa.
+      <h3 class="mt-3 font-black text-slate-900">Belum ada tryout</h3>
+
+      <p class="mt-1 text-sm text-slate-500">
+        Buat tryout terlebih dahulu sebelum melihat hasil siswa.
       </p>
+
+      <button
+        type="button"
+        onclick={() => goto("/teacher/tryouts/new")}
+        class="mt-4 rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white"
+      >
+        + Buat Tryout
+      </button>
     </div>
   {:else}
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <label for="tryoutId" class="text-sm font-bold text-slate-700">
-        Pilih Tryout
-      </label>
+    <!-- TRYOUT CONTEXT -->
+    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+        <div>
+          <label
+            for="tryoutId"
+            class="text-xs font-black uppercase tracking-[0.12em] text-slate-400"
+          >
+            Tryout yang dianalisis
+          </label>
 
-      <select
-        id="tryoutId"
-        value={selectedTryoutId}
-        onchange={handleTryoutChange}
-        disabled={loadingResults}
-        class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-900 focus:bg-white disabled:opacity-60"
-      >
-        {#each tryouts as tryout}
-          <option value={tryout.id}>
-            {tryout.title} - {tryout.bank.name}
-          </option>
-        {/each}
-      </select>
+          <select
+            id="tryoutId"
+            value={selectedTryoutId}
+            onchange={handleTryoutChange}
+            disabled={loadingResults}
+            class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#123c8c] focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:opacity-60"
+          >
+            {#each tryouts as tryout}
+              <option value={tryout.id}>
+                {tryout.title} · {tryout.bank.name}
+              </option>
+            {/each}
+          </select>
+        </div>
+
+        {#if selectedTryout}
+          <button
+            type="button"
+            onclick={() =>
+              goto(`/teacher/tryouts/${selectedTryout.id}/participants`)}
+            class="rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+          >
+            Kelola Peserta
+          </button>
+        {/if}
+      </div>
 
       {#if selectedTryout}
-        <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+        <div
+          class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4"
+        >
+          <span
+            class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600"
+          >
             {selectedTryout.totalQuestions} soal
           </span>
 
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+          <span
+            class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600"
+          >
             {selectedTryout.durationMinutes} menit
           </span>
 
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-            Percobaan: {getMaxAttemptsLabel(selectedTryout.maxAttempts)}
+          <span
+            class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600"
+          >
+            {getMaxAttemptsLabel(selectedTryout.maxAttempts)}
           </span>
 
           <span
-            class={`rounded-full px-3 py-1 ${getTryoutStatusBadgeClass(
+            class={`rounded-full px-3 py-1.5 text-xs font-bold ${getTryoutStatusBadgeClass(
               selectedTryout.status,
             )}`}
           >
             {getTryoutStatusLabel(selectedTryout.status)}
           </span>
 
-          <span class="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
-            Peserta: {selectedTryout.totalParticipants}
+          <span
+            class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700"
+          >
+            {selectedTryout.totalParticipants} peserta
           </span>
 
-          <span class="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-            Pending: {selectedTryout.pendingRequests}
-          </span>
+          {#if selectedTryout.pendingRequests > 0}
+            <button
+              type="button"
+              onclick={() =>
+                goto(`/teacher/tryouts/${selectedTryout.id}/participants`)}
+              class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
+            >
+              {selectedTryout.pendingRequests} menunggu persetujuan →
+            </button>
+          {/if}
         </div>
-
-        <button
-          type="button"
-          onclick={() =>
-            goto(`/teacher/tryouts/${selectedTryout.id}/participants`)}
-          class="mt-4 rounded-xl border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700"
-        >
-          Kelola Peserta
-        </button>
       {/if}
-    </div>
+    </section>
 
     {#if loadingResults}
       <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p class="text-sm font-semibold text-slate-500">Memuat hasil...</p>
+        <div class="flex items-center gap-3">
+          <div
+            class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#123c8c]"
+          ></div>
+
+          <p class="text-sm font-semibold text-slate-500">
+            Memuat analitik tryout...
+          </p>
+        </div>
       </div>
     {:else}
       {#if statistics}
-        <div class="grid gap-4 md:grid-cols-4">
-          <div
-            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p class="text-sm font-semibold text-slate-500">
-              Peserta Disetujui
-            </p>
+        <!-- KPI -->
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <ResultMetricCard
+            label="Peserta Disetujui"
+            value={statistics.summary.totalParticipants}
+            helper={`${statistics.summary.pendingRequests} menunggu · ${statistics.summary.rejectedParticipants} ditolak`}
+          />
 
-            <p class="mt-2 text-3xl font-bold text-slate-950">
-              {statistics.summary.totalParticipants}
-            </p>
+          <ResultMetricCard
+            label="Penyelesaian"
+            value={`${statistics.summary.completionRate}%`}
+            tone="green"
+            helper={`${statistics.summary.totalFinishedParticipants ?? 0} dari ${statistics.summary.totalParticipants} peserta telah menyelesaikan`}
+          />
 
-            <p class="mt-1 text-xs font-semibold text-slate-400">
-              Pending: {statistics.summary.pendingRequests} · Ditolak:
-              {statistics.summary.rejectedParticipants}
-            </p>
-          </div>
+          <ResultMetricCard
+            label="Rata-rata Nilai"
+            value={statistics.summary.averageScore}
+            tone="blue"
+            helper={`Rata-rata nilai terbaru: ${statistics.summary.averageLatestScore ?? 0}`}
+          />
 
-          <div
-            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p class="text-sm font-semibold text-slate-500">Sesi Selesai</p>
-
-            <p class="mt-2 text-3xl font-bold text-emerald-700">
-              {statistics.summary.finishedSessions}
-            </p>
-
-            <p class="mt-1 text-xs font-semibold text-slate-400">
-              Total sesi: {statistics.summary.totalSessions}
-            </p>
-          </div>
-
-          <div
-            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p class="text-sm font-semibold text-slate-500">Rata-rata Nilai</p>
-
-            <p class="mt-2 text-3xl font-bold text-blue-900">
-              {statistics.summary.averageScore}
-            </p>
-
-            <p class="mt-1 text-xs font-semibold text-slate-400">
-              Latest avg: {statistics.summary.averageLatestScore ?? 0}
-            </p>
-          </div>
-
-          <div
-            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p class="text-sm font-semibold text-slate-500">Completion Rate</p>
-
-            <p class="mt-2 text-3xl font-bold text-slate-950">
-              {statistics.summary.completionRate}%
-            </p>
-
-            <span
-              class={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${getTrendClass(
-                statistics.summary.trend,
-              )}`}
-            >
-              {getTrendLabel(statistics.summary.trend)}
-            </span>
-          </div>
+          <ResultMetricCard
+            label="Tren Performa"
+            value={trendLabel}
+            tone={trendTone}
+            badge={ongoingSessions > 0 ? `${ongoingSessions} sesi aktif` : ""}
+            badgeTone={ongoingSessions > 0 ? "amber" : "default"}
+            helper={trendDescription}
+          />
         </div>
 
-        <div
-          class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-          <div class="border-b border-slate-100 p-5">
-            <h3 class="text-lg font-bold text-slate-950">
-              Progress Curve per Percobaan
-            </h3>
-
-            <p class="mt-1 text-sm text-slate-500">
-              Rata-rata performa peserta berdasarkan attempt ke-1, ke-2, dan
-              seterusnya.
-            </p>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[760px] text-left text-sm">
-              <thead
-                class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
+        <!-- SCORE RANGE -->
+        {#if statistics.summary.finishedSessions > 0}
+          <div
+            class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3"
+          >
+            <div class="px-2 py-1">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
               >
-                <tr>
-                  <th class="px-5 py-4">Percobaan</th>
-                  <th class="px-5 py-4">Sesi Selesai</th>
-                  <th class="px-5 py-4">Rata-rata Nilai</th>
-                  <th class="px-5 py-4">Rata-rata Benar</th>
-                  <th class="px-5 py-4">Rata-rata Salah</th>
-                  <th class="px-5 py-4">Completion</th>
-                </tr>
-              </thead>
+                Nilai Tertinggi
+              </p>
 
-              <tbody>
-                {#if !statistics.progressCurve || statistics.progressCurve.length === 0}
-                  <tr>
-                    <td
-                      colspan="6"
-                      class="px-5 py-8 text-center text-sm text-slate-500"
-                    >
-                      Belum ada data attempt yang selesai.
-                    </td>
-                  </tr>
-                {:else}
-                  {#each statistics.progressCurve as item}
-                    <tr class="border-t border-slate-100">
-                      <td class="px-5 py-4 font-bold text-slate-900">
-                        Attempt #{item.attemptNumber}
-                      </td>
+              <p class="mt-1 text-xl font-black text-emerald-700">
+                {statistics.summary.highestScore}
+              </p>
+            </div>
 
-                      <td class="px-5 py-4 font-semibold text-slate-700">
-                        {item.totalFinishedSessions}
-                      </td>
+            <div class="border-slate-100 px-2 py-1 sm:border-x sm:px-5">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
+              >
+                Nilai Terendah
+              </p>
 
-                      <td class="px-5 py-4 font-bold text-blue-900">
-                        {item.averageScore}
-                      </td>
+              <p class="mt-1 text-xl font-black text-red-600">
+                {statistics.summary.lowestScore}
+              </p>
+            </div>
 
-                      <td class="px-5 py-4 font-bold text-emerald-700">
-                        {item.averageCorrect}
-                      </td>
+            <div class="px-2 py-1 sm:px-5">
+              <p
+                class="text-xs font-bold uppercase tracking-wide text-slate-400"
+              >
+                Sesi Selesai
+              </p>
 
-                      <td class="px-5 py-4 font-bold text-red-700">
-                        {item.averageWrong}
-                      </td>
-
-                      <td class="px-5 py-4 font-semibold text-slate-700">
-                        {item.completionRate}%
-                      </td>
-                    </tr>
-                  {/each}
-                {/if}
-              </tbody>
-            </table>
+              <p class="mt-1 text-xl font-black text-slate-900">
+                {statistics.summary.finishedSessions}
+                <span class="text-sm font-semibold text-slate-400">
+                  / {statistics.summary.totalSessions}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
+        {/if}
+
+        <TryoutProgressChart items={progressCurve} />
       {/if}
 
-      <div
-        class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-      >
-        <div class="border-b border-slate-100 p-5">
-          <h3 class="text-lg font-bold text-slate-950">Detail Sesi Siswa</h3>
-
-          <p class="mt-1 text-sm text-slate-500">
-            Semua sesi pengerjaan siswa yang sudah menjadi peserta approved.
-          </p>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[1100px] text-left text-sm">
-            <thead
-              class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
-            >
-              <tr>
-                <th class="px-5 py-4">Siswa</th>
-                <th class="px-5 py-4">Percobaan</th>
-                <th class="px-5 py-4">Status</th>
-                <th class="px-5 py-4">Nilai</th>
-                <th class="px-5 py-4">Benar</th>
-                <th class="px-5 py-4">Salah</th>
-                <th class="px-5 py-4">Progress</th>
-                <th class="px-5 py-4">Waktu</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {#if sessions.length === 0}
-                <tr>
-                  <td colspan="8" class="px-5 py-10 text-center text-slate-500">
-                    Belum ada siswa approved yang mengerjakan tryout ini.
-                  </td>
-                </tr>
-              {:else}
-                {#each sessions as session}
-                  <tr class="border-t border-slate-100">
-                    <td class="px-5 py-4">
-                      <p class="font-bold text-slate-900">
-                        {session.student.name}
-                      </p>
-
-                      <p class="text-xs text-slate-400">
-                        {session.student.email}
-                      </p>
-
-                      <p class="text-xs text-slate-400">
-                        {session.student.school ?? "-"} ·
-                        {session.student.className ?? "-"}
-                      </p>
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-slate-900">
-                      #{session.attemptNumber}
-                    </td>
-
-                    <td class="px-5 py-4">
-                      {#if session.status === "FINISHED"}
-                        <span
-                          class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
-                        >
-                          Selesai
-                        </span>
-                      {:else}
-                        <span
-                          class="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700"
-                        >
-                          Berlangsung
-                        </span>
-                      {/if}
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-blue-900">
-                      {session.score}
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-emerald-700">
-                      {session.correctCount}
-                    </td>
-
-                    <td class="px-5 py-4 font-bold text-red-700">
-                      {session.wrongCount}
-                    </td>
-
-                    <td class="px-5 py-4 font-semibold text-slate-700">
-                      {session.answeredCount}
-                      <span class="text-slate-400">/</span>
-                      {session.totalQuestions}
-                    </td>
-
-                    <td class="px-5 py-4">
-                      <p class="text-xs text-slate-500">
-                        Mulai:
-                        {new Date(session.startedAt).toLocaleString("id-ID")}
-                      </p>
-
-                      <p class="text-xs text-slate-500">
-                        Selesai:
-                        {session.finishedAt
-                          ? new Date(session.finishedAt).toLocaleString("id-ID")
-                          : "-"}
-                      </p>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <SessionResultsTable {sessions} />
     {/if}
   {/if}
 </section>

@@ -29,10 +29,48 @@ function getApiUrl(path: string) {
   return `${baseUrl}${normalizedPath}`;
 }
 
-async function getAuthToken() {
-  const { data } = await supabase.auth.getSession();
+function getApiErrorMessage(payload: unknown) {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string"
+  ) {
+    return payload.message;
+  }
 
-  return data.session?.access_token ?? null;
+  return "API request failed";
+}
+
+async function getAuthToken() {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new ApiError(error.message, 401, error);
+  }
+
+  return session?.access_token ?? null;
+}
+
+async function parseResponse(response: Response) {
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }
 
 export async function apiFetch<T = unknown>(
@@ -40,18 +78,22 @@ export async function apiFetch<T = unknown>(
   options: ApiFetchOptions = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
+
+  const hasBody = options.body !== undefined && options.body !== null;
   const bodyIsFormData = isFormDataBody(options.body);
 
-  if (!bodyIsFormData && !headers.has("Content-Type")) {
+  if (hasBody && !bodyIsFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   if (options.auth !== false) {
     const token = await getAuthToken();
 
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
+    if (!token) {
+      throw new ApiError("Session tidak ditemukan.", 401, null);
     }
+
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(getApiUrl(path), {
@@ -59,14 +101,10 @@ export async function apiFetch<T = unknown>(
     headers,
   });
 
-  const result = await response.json().catch(() => null);
+  const result = await parseResponse(response);
 
   if (!response.ok) {
-    throw new ApiError(
-      result?.message ?? "API request failed",
-      response.status,
-      result,
-    );
+    throw new ApiError(getApiErrorMessage(result), response.status, result);
   }
 
   return result as T;

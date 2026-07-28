@@ -62,6 +62,8 @@ teacherRoutes.patch(
   teacherController.approveEnrollment,
 );
 
+teacherRoutes.delete("/subjects/:id", teacherController.deleteSubject);
+
 teacherRoutes.patch(
   "/enrollments/:id/reject",
   teacherController.rejectEnrollment,

@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
+  import TryoutJoinCodeCard from "$lib/components/tryouts/TryoutJoinCodeCard.svelte";
   import {
     getTeacherTryoutsCached,
     invalidateTeacherTryoutDetailCache,
@@ -16,28 +17,28 @@
     tryoutStatusOptions,
   } from "$lib/types/admin";
   import type {
-    AdminTryoutItem,
     TryoutStatus,
     UpdateTryoutStatusPayload,
   } from "$lib/types/admin";
   import type {
     TeacherMutateTryoutResponse,
     TeacherRegenerateTryoutJoinCodeResponse,
+    TeacherTryoutItem,
   } from "$lib/types/teacher";
 
   let loading = $state(true);
   let refreshing = $state(false);
+
   let deletingId = $state("");
   let updatingStatusId = $state("");
   let regeneratingCodeId = $state("");
-  let copiedCode = $state("");
 
   let errorMessage = $state("");
   let successMessage = $state("");
 
-  let tryouts = $state<AdminTryoutItem[]>([]);
+  let tryouts = $state<TeacherTryoutItem[]>([]);
 
-  function isValidTryoutCache(cachedTryouts: AdminTryoutItem[]) {
+  function isValidTryoutCache(cachedTryouts: TeacherTryoutItem[]) {
     return cachedTryouts.every(
       (tryout) =>
         "totalEnrollments" in tryout &&
@@ -49,7 +50,18 @@
     );
   }
 
-  async function loadTryouts(options: { force?: boolean } = {}) {
+  function formatDate(value: string) {
+    return new Date(value).toLocaleString("id-ID", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+
+  async function loadTryouts(
+    options: {
+      force?: boolean;
+    } = {},
+  ) {
     const force = options.force ?? false;
 
     errorMessage = "";
@@ -102,21 +114,20 @@
     }
 
     updatingStatusId = tryoutId;
+
     errorMessage = "";
     successMessage = "";
 
     const previousTryouts = tryouts;
 
-    tryouts = tryouts.map((tryout) => {
-      if (tryout.id !== tryoutId) {
-        return tryout;
-      }
-
-      return {
-        ...tryout,
-        status: nextStatus,
-      };
-    });
+    tryouts = tryouts.map((tryout) =>
+      tryout.id === tryoutId
+        ? {
+            ...tryout,
+            status: nextStatus,
+          }
+        : tryout,
+    );
 
     try {
       const payload: UpdateTryoutStatusPayload = {
@@ -153,7 +164,7 @@
 
   async function regenerateJoinCode(tryoutId: string) {
     const confirmed = confirm(
-      "Buat ulang kode tryout? Kode lama tidak akan dapat digunakan lagi.",
+      "Buat ulang kode tryout? Kode lama tidak dapat digunakan lagi.",
     );
 
     if (!confirmed) {
@@ -161,6 +172,7 @@
     }
 
     regeneratingCodeId = tryoutId;
+
     errorMessage = "";
     successMessage = "";
 
@@ -182,33 +194,9 @@
       });
     } catch (error) {
       errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Gagal membuat ulang kode tryout.";
+        error instanceof Error ? error.message : "Gagal membuat ulang kode.";
     } finally {
       regeneratingCodeId = "";
-    }
-  }
-
-  async function copyJoinCode(joinCode: string | null) {
-    if (!joinCode) {
-      return;
-    }
-
-    errorMessage = "";
-
-    try {
-      await navigator.clipboard.writeText(joinCode);
-
-      copiedCode = joinCode;
-
-      window.setTimeout(() => {
-        if (copiedCode === joinCode) {
-          copiedCode = "";
-        }
-      }, 1500);
-    } catch {
-      errorMessage = "Kode tryout gagal disalin.";
     }
   }
 
@@ -220,6 +208,7 @@
     }
 
     deletingId = id;
+
     errorMessage = "";
     successMessage = "";
 
@@ -228,9 +217,9 @@
         method: "DELETE",
       });
 
-      successMessage = "Tryout berhasil dihapus.";
-
       invalidateTeacherTryoutRelatedCaches(id);
+
+      successMessage = "Tryout berhasil dihapus.";
 
       await loadTryouts({
         force: true,
@@ -254,15 +243,21 @@
   });
 </script>
 
-<section class="space-y-5">
+<section class="space-y-6">
   <div
-    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+    class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
   >
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Tryout Guru</h2>
+      <p class="text-xs font-black uppercase tracking-[0.16em] text-[#0c438c]">
+        Pembelajaran
+      </p>
+
+      <h2 class="mt-1 text-2xl font-black tracking-tight text-slate-950">
+        Tryout
+      </h2>
 
       <p class="mt-1 text-sm text-slate-500">
-        Kelola tryout, peserta, dan kode bergabung dari bank soal milikmu.
+        Kelola paket tryout, akses siswa, peserta, dan hasil pengerjaan.
       </p>
     </div>
 
@@ -271,7 +266,7 @@
         type="button"
         onclick={refreshTryouts}
         disabled={loading || refreshing}
-        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60"
+        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
       >
         {refreshing ? "Memuat..." : "Refresh"}
       </button>
@@ -279,231 +274,274 @@
       <button
         type="button"
         onclick={() => goto("/teacher/tryouts/new")}
-        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
+        class="relative overflow-hidden rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white"
       >
-        + Buat Tryout
+        <span class="relative z-10"> + Buat Tryout </span>
+
+        <span class="absolute bottom-0 left-0 h-1 w-full bg-[#f8c900]"></span>
       </button>
     </div>
   </div>
 
   {#if errorMessage}
-    <p
-      class="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+    <div
+      class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
       {errorMessage}
-    </p>
+    </div>
   {/if}
 
   {#if successMessage}
-    <p
-      class="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+    <div
+      class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
     >
       {successMessage}
-    </p>
+    </div>
   {/if}
 
-  <div
-    class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-  >
-    <div class="overflow-x-auto">
-      <table class="w-full min-w-[1400px] text-left text-sm">
-        <thead
-          class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"
-        >
-          <tr>
-            <th class="px-5 py-4">Judul</th>
-            <th class="px-5 py-4">Bank Soal</th>
-            <th class="px-5 py-4">Soal</th>
-            <th class="px-5 py-4">Durasi</th>
-            <th class="px-5 py-4">Percobaan</th>
-            <th class="px-5 py-4">Status</th>
-            <th class="px-5 py-4">Kode Join</th>
-            <th class="px-5 py-4">Peserta</th>
-            <th class="px-5 py-4">Sesi</th>
-            <th class="px-5 py-4">Aksi</th>
-          </tr>
-        </thead>
+  {#if loading}
+    <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div
+          class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#0c438c]"
+        ></div>
 
-        <tbody>
-          {#if loading}
-            <tr>
-              <td colspan="10" class="px-5 py-10 text-center text-slate-500">
-                Memuat data...
-              </td>
-            </tr>
-          {:else if tryouts.length === 0}
-            <tr>
-              <td colspan="10" class="px-5 py-10 text-center text-slate-500">
-                Belum ada tryout.
-              </td>
-            </tr>
-          {:else}
-            {#each tryouts as tryout}
-              <tr class="border-t border-slate-100 align-top">
-                <td class="px-5 py-4">
-                  <p class="font-bold text-slate-900">{tryout.title}</p>
-
-                  <p class="text-xs text-slate-400">
-                    {new Date(tryout.createdAt).toLocaleString("id-ID")}
-                  </p>
-                </td>
-
-                <td class="px-5 py-4">
-                  <p class="font-semibold text-slate-700">{tryout.bank.name}</p>
-
-                  <p class="text-xs text-slate-400">
-                    {tryout.bank.totalAvailableQuestions} soal tersedia
-                  </p>
-                </td>
-
-                <td class="px-5 py-4 font-bold text-slate-900">
-                  {tryout.totalQuestions}
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {tryout.durationMinutes} menit
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {getMaxAttemptsLabel(tryout.maxAttempts)}
-                </td>
-
-                <td class="px-5 py-4">
-                  <div class="flex flex-col gap-2">
-                    <span
-                      class={`w-fit rounded-full px-3 py-1 text-xs font-bold ${getTryoutStatusBadgeClass(
-                        tryout.status,
-                      )}`}
-                    >
-                      {getTryoutStatusLabel(tryout.status)}
-                    </span>
-
-                    <select
-                      value={tryout.status}
-                      disabled={updatingStatusId === tryout.id}
-                      onchange={(event) => handleStatusChange(tryout.id, event)}
-                      class="w-32 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none disabled:opacity-60"
-                    >
-                      {#each tryoutStatusOptions as option}
-                        <option value={option.value}>{option.label}</option>
-                      {/each}
-                    </select>
-                  </div>
-                </td>
-
-                <td class="px-5 py-4">
-                  <div class="min-w-40 space-y-2">
-                    {#if tryout.joinCode}
-                      <div class="flex flex-wrap items-center gap-2">
-                        <code
-                          class="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-bold tracking-[0.18em] text-white"
-                        >
-                          {tryout.joinCode}
-                        </code>
-
-                        <span
-                          class={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                            tryout.joinCodeEnabled
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-red-50 text-red-600"
-                          }`}
-                        >
-                          {tryout.joinCodeEnabled ? "Aktif" : "Nonaktif"}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onclick={() => copyJoinCode(tryout.joinCode)}
-                        class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600"
-                      >
-                        {copiedCode === tryout.joinCode
-                          ? "Tersalin"
-                          : "Salin kode"}
-                      </button>
-                    {:else}
-                      <p class="text-xs font-semibold text-slate-400">
-                        Belum memiliki kode
-                      </p>
-                    {/if}
-
-                    <button
-                      type="button"
-                      disabled={regeneratingCodeId === tryout.id}
-                      onclick={() => regenerateJoinCode(tryout.id)}
-                      class="block rounded-lg border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-700 disabled:opacity-50"
-                    >
-                      {regeneratingCodeId === tryout.id
-                        ? "Membuat..."
-                        : "Buat ulang kode"}
-                    </button>
-                  </div>
-                </td>
-
-                <td class="px-5 py-4">
-                  <p class="font-bold text-slate-900">
-                    {tryout.totalParticipants}
-                    <span class="text-xs font-semibold text-slate-400">
-                      approved
-                    </span>
-                  </p>
-
-                  <p class="text-xs font-semibold text-amber-700">
-                    Pending: {tryout.pendingRequests}
-                  </p>
-
-                  <p class="text-xs font-semibold text-red-600">
-                    Ditolak: {tryout.rejectedParticipants}
-                  </p>
-                </td>
-
-                <td class="px-5 py-4 font-semibold text-slate-700">
-                  {tryout.totalSessions}
-                </td>
-
-                <td class="px-5 py-4">
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onclick={() =>
-                        goto(`/teacher/tryouts/${tryout.id}/participants`)}
-                      class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700"
-                    >
-                      Peserta
-                    </button>
-
-                    <button
-                      type="button"
-                      onclick={() =>
-                        goto(`/teacher/results?tryoutId=${tryout.id}`)}
-                      class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700"
-                    >
-                      Hasil
-                    </button>
-
-                    <button
-                      type="button"
-                      onclick={() => goto(`/teacher/tryouts/${tryout.id}/edit`)}
-                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={deletingId === tryout.id}
-                      onclick={() => deleteTryout(tryout.id)}
-                      class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 disabled:opacity-50"
-                    >
-                      {deletingId === tryout.id ? "Menghapus..." : "Hapus"}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          {/if}
-        </tbody>
-      </table>
+        <p class="text-sm font-semibold text-slate-500">Memuat tryout...</p>
+      </div>
     </div>
-  </div>
+  {:else if tryouts.length === 0}
+    <div
+      class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center"
+    >
+      <div
+        class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#0c438c]"
+      >
+        <svg
+          class="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M6 3h9l3 3v15H6V3Z" />
+          <path d="M9 11h6" />
+          <path d="M9 15h6" />
+        </svg>
+      </div>
+
+      <h3 class="mt-4 text-lg font-black text-slate-950">Belum ada tryout</h3>
+
+      <p class="mt-2 text-sm text-slate-500">
+        Buat tryout pertama dari bank soal yang sudah tersedia.
+      </p>
+
+      <button
+        type="button"
+        onclick={() => goto("/teacher/tryouts/new")}
+        class="mt-5 rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white"
+      >
+        Buat Tryout
+      </button>
+    </div>
+  {:else}
+    <div class="grid gap-5 xl:grid-cols-2">
+      {#each tryouts as tryout}
+        <article
+          class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+        >
+          <div class="p-5 sm:p-6">
+            <div
+              class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+            >
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span
+                    class={`rounded-full px-3 py-1 text-xs font-bold ${getTryoutStatusBadgeClass(
+                      tryout.status,
+                    )}`}
+                  >
+                    {getTryoutStatusLabel(tryout.status)}
+                  </span>
+
+                  <span class="text-xs font-medium text-slate-400">
+                    {formatDate(tryout.createdAt)}
+                  </span>
+                </div>
+
+                <h3 class="mt-3 text-lg font-black leading-6 text-slate-950">
+                  {tryout.title}
+                </h3>
+
+                <p class="mt-1 text-sm font-semibold text-[#0c438c]">
+                  {tryout.bank.name}
+                </p>
+
+                <p class="mt-0.5 text-xs text-slate-400">
+                  {tryout.bank.totalAvailableQuestions}
+                  soal tersedia di bank
+                </p>
+              </div>
+
+              <div class="w-full sm:w-36">
+                <label
+                  for={`status-${tryout.id}`}
+                  class="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                >
+                  Status
+                </label>
+
+                <select
+                  id={`status-${tryout.id}`}
+                  value={tryout.status}
+                  disabled={updatingStatusId === tryout.id}
+                  onchange={(event) => handleStatusChange(tryout.id, event)}
+                  class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                >
+                  {#each tryoutStatusOptions as option}
+                    <option value={option.value}>
+                      {option.label}
+                    </option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                >
+                  Soal
+                </p>
+
+                <p class="mt-1 text-lg font-black text-slate-950">
+                  {tryout.totalQuestions}
+                </p>
+              </div>
+
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                >
+                  Durasi
+                </p>
+
+                <p class="mt-1 text-lg font-black text-slate-950">
+                  {tryout.durationMinutes}
+                  <span class="text-xs font-semibold text-slate-400">
+                    mnt
+                  </span>
+                </p>
+              </div>
+
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                >
+                  Percobaan
+                </p>
+
+                <p class="mt-1 text-sm font-black text-slate-950">
+                  {getMaxAttemptsLabel(tryout.maxAttempts)}
+                </p>
+              </div>
+
+              <div class="rounded-xl bg-slate-50 p-3">
+                <p
+                  class="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                >
+                  Sesi
+                </p>
+
+                <p class="mt-1 text-lg font-black text-[#0c438c]">
+                  {tryout.totalSessions}
+                </p>
+              </div>
+            </div>
+
+            <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+              <TryoutJoinCodeCard
+                joinCode={tryout.joinCode}
+                enabled={tryout.joinCodeEnabled}
+                showRegenerate
+                regenerating={regeneratingCodeId === tryout.id}
+                onRegenerate={() => regenerateJoinCode(tryout.id)}
+              />
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                <p
+                  class="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400"
+                >
+                  Peserta
+                </p>
+
+                <div class="mt-3 flex items-end gap-2">
+                  <p class="text-3xl font-black text-slate-950">
+                    {tryout.totalParticipants}
+                  </p>
+
+                  <p class="pb-1 text-xs font-semibold text-slate-400">
+                    disetujui
+                  </p>
+                </div>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <span
+                    class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700"
+                  >
+                    {tryout.pendingRequests}
+                    menunggu
+                  </span>
+
+                  <span
+                    class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600"
+                  >
+                    {tryout.rejectedParticipants}
+                    ditolak
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex flex-wrap gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:px-6"
+          >
+            <button
+              type="button"
+              onclick={() => goto(`/teacher/tryouts/${tryout.id}/participants`)}
+              class="rounded-xl bg-[#062b63] px-4 py-2 text-xs font-bold text-white"
+            >
+              Kelola Peserta
+            </button>
+
+            <button
+              type="button"
+              onclick={() => goto(`/teacher/results?tryoutId=${tryout.id}`)}
+              class="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-[#0c438c]"
+            >
+              Lihat Hasil
+            </button>
+
+            <button
+              type="button"
+              onclick={() => goto(`/teacher/tryouts/${tryout.id}/edit`)}
+              class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700"
+            >
+              Edit
+            </button>
+
+            <button
+              type="button"
+              disabled={deletingId === tryout.id}
+              onclick={() => deleteTryout(tryout.id)}
+              class="ml-auto rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {deletingId === tryout.id ? "Menghapus..." : "Hapus"}
+            </button>
+          </div>
+        </article>
+      {/each}
+    </div>
+  {/if}
 </section>
