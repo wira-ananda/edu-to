@@ -3,6 +3,7 @@
 
   type Props = {
     user: AppUser;
+    eyebrow?: string;
     title?: string;
     description?: string;
     roleLabel?: string;
@@ -10,44 +11,50 @@
 
   let {
     user,
+    eyebrow = "Akun",
     title = "Profil",
-    description = "Informasi akun yang digunakan pada sistem tryout.",
-    roleLabel = "Pengguna",
+    description = "Informasi akun yang digunakan pada sistem.",
+    roleLabel,
   }: Props = $props();
 
-  const initials = $derived.by(() => {
-    const words = user.name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  function getInitials(name: string) {
+    return name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase();
+  }
 
-    if (words.length === 0) {
-      return "U";
+  function getRoleLabel(role: AppUser["role"]) {
+    if (role === "ADMIN") {
+      return "Administrator";
     }
 
-    return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
-  });
-
-  const roleDescription = $derived.by(() => {
-    if (user.role === "ADMIN") {
-      return "Memiliki akses untuk mengelola keseluruhan sistem.";
+    if (role === "TEACHER") {
+      return "Guru";
     }
 
-    if (user.role === "TEACHER") {
-      return "Mengelola bank soal, tryout, peserta, dan hasil siswa.";
-    }
+    return "Siswa";
+  }
 
-    return "Mengikuti tryout dan melihat hasil pengerjaan.";
-  });
+  const initials = $derived(getInitials(user.name));
 
-  const accountStatusLabel = $derived("Aktif");
+  const displayRole = $derived(roleLabel ?? getRoleLabel(user.role));
 </script>
 
-<section class="space-y-6">
-  <!-- PAGE HEADER -->
+<section class="space-y-5">
   <div>
-    <p class="text-xs font-black uppercase tracking-[0.16em] text-[#123c8c]">
-      Akun
+    <p
+      class="text-[10px] font-black uppercase tracking-[0.18em] text-[#0c438c]"
+    >
+      {eyebrow}
     </p>
 
-    <h2 class="mt-1 text-2xl font-black tracking-tight text-slate-950">
+    <h2
+      class="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl"
+    >
       {title}
     </h2>
 
@@ -56,240 +63,232 @@
     </p>
   </div>
 
-  <!-- PROFILE HERO -->
-  <section
-    class="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+  <div
+    class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
   >
-    <div class="absolute left-0 top-0 h-1.5 w-full bg-[#f8c900]"></div>
+    <div class="h-1.5 bg-[#f8c900]"></div>
 
-    <div class="relative overflow-hidden bg-[#062b63] px-6 py-7 sm:px-8">
-      <!-- decorative shapes -->
-      <div
-        class="pointer-events-none absolute -right-16 -top-24 h-60 w-60 rotate-12 rounded-[48px] bg-[#0c438c]"
-      ></div>
-
-      <div
-        class="pointer-events-none absolute -right-5 top-0 h-full w-28 skew-x-[-24deg] bg-[#f8c900]"
-      ></div>
-
-      <div class="relative flex flex-col gap-5 sm:flex-row sm:items-center">
+    <div class="grid lg:grid-cols-[300px_minmax(0,1fr)]">
+      <!-- Identity -->
+      <aside
+        class="border-b border-slate-100 bg-slate-50/70 p-5 sm:p-6 lg:border-b-0 lg:border-r"
+      >
         <div
-          class="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-[#f8c900] text-2xl font-black text-[#062b63] shadow-lg"
+          class="flex items-center gap-4 lg:flex-col lg:items-start lg:gap-5"
         >
-          {initials}
-        </div>
+          <div
+            class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#062b63] text-xl font-black tracking-wide text-white shadow-sm sm:h-20 sm:w-20 sm:text-2xl"
+          >
+            {initials}
+          </div>
 
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2">
-            <h3 class="truncate text-2xl font-black tracking-tight text-white">
+          <div class="min-w-0">
+            <span
+              class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#0c438c]"
+            >
+              {displayRole}
+            </span>
+
+            <h3
+              class="mt-2 truncate text-lg font-black text-slate-950 sm:text-xl lg:whitespace-normal"
+            >
               {user.name}
             </h3>
 
-            <span
-              class="rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white"
-            >
-              {roleLabel}
-            </span>
+            <p class="mt-1 break-all text-sm text-slate-500">
+              {user.email}
+            </p>
           </div>
-
-          <p class="mt-1 text-sm font-medium text-blue-100">
-            {user.email}
-          </p>
-
-          <p class="mt-3 max-w-xl text-sm leading-6 text-blue-100/80">
-            {roleDescription}
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ACCOUNT SUMMARY -->
-  <div class="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.7fr)]">
-    <!-- MAIN INFO -->
-    <section
-      class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-    >
-      <div class="border-b border-slate-100 pb-4">
-        <p
-          class="text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-        >
-          Informasi Akun
-        </p>
-
-        <h3 class="mt-1 text-lg font-black text-slate-950">Data profil</h3>
-
-        <p class="mt-1 text-sm text-slate-500">
-          Informasi identitas yang tersimpan pada akun ini.
-        </p>
-      </div>
-
-      <dl class="divide-y divide-slate-100">
-        <div
-          class="grid gap-1 py-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
-        >
-          <dt class="text-sm font-semibold text-slate-500">Nama Lengkap</dt>
-
-          <dd class="text-sm font-bold text-slate-900">
-            {user.name}
-          </dd>
         </div>
 
         <div
-          class="grid gap-1 py-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
+          class="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3"
         >
-          <dt class="text-sm font-semibold text-slate-500">Email</dt>
-
-          <dd class="break-all text-sm font-bold text-slate-900">
-            {user.email}
-          </dd>
-        </div>
-
-        <div
-          class="grid gap-1 py-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
-        >
-          <dt class="text-sm font-semibold text-slate-500">Role</dt>
-
-          <dd>
-            <span
-              class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#123c8c]"
+          <div class="flex items-start gap-3">
+            <div
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c]"
             >
-              {roleLabel}
-            </span>
-          </dd>
+              <svg
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5" />
+                <path d="M12 8h.01" />
+              </svg>
+            </div>
+
+            <div>
+              <p class="text-xs font-bold text-[#062b63]">Informasi akun</p>
+
+              <p class="mt-1 text-xs leading-5 text-slate-500">
+                Data profil digunakan untuk identitas kamu selama menggunakan
+                EduTryout.
+              </p>
+            </div>
+          </div>
         </div>
+      </aside>
 
-        {#if user.school}
-          <div
-            class="grid gap-1 py-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
-          >
-            <dt class="text-sm font-semibold text-slate-500">Sekolah</dt>
-
-            <dd class="text-sm font-bold text-slate-900">
-              {user.school}
-            </dd>
-          </div>
-        {/if}
-
-        {#if user.className}
-          <div
-            class="grid gap-1 py-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
-          >
-            <dt class="text-sm font-semibold text-slate-500">Kelas</dt>
-
-            <dd class="text-sm font-bold text-slate-900">
-              {user.className}
-            </dd>
-          </div>
-        {/if}
-      </dl>
-    </section>
-
-    <!-- ACCOUNT STATUS -->
-    <div class="space-y-5">
-      <section
-        class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <p
-          class="text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-        >
-          Status Akun
-        </p>
-
-        <div class="mt-4 flex items-center gap-3">
-          <div
-            class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"
-          >
-            <svg
-              class="h-5 w-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          </div>
-
+      <!-- Details -->
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="font-black text-slate-900">
-              {accountStatusLabel}
-            </p>
-
-            <p class="text-xs text-slate-500">
-              Akun dapat digunakan pada sistem.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section
-        class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <p
-          class="text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-        >
-          Hak Akses
-        </p>
-
-        <div class="mt-4 flex items-start gap-3">
-          <div
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123c8c]"
-          >
-            <svg
-              class="h-5 w-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6l-8-3Z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-          </div>
-
-          <div>
-            <p class="font-black text-slate-900">
-              {roleLabel}
-            </p>
+            <p class="text-base font-black text-slate-950">Informasi Pribadi</p>
 
             <p class="mt-1 text-xs leading-5 text-slate-500">
-              {roleDescription}
+              Data utama yang terhubung dengan akunmu.
             </p>
           </div>
         </div>
-      </section>
+
+        <div class="mt-5 grid gap-3 sm:grid-cols-2">
+          <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div class="flex items-center gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c] shadow-sm"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21a8 8 0 0 1 16 0" />
+                </svg>
+              </div>
+
+              <div class="min-w-0">
+                <p
+                  class="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400"
+                >
+                  Nama Lengkap
+                </p>
+
+                <p class="mt-1 truncate text-sm font-black text-slate-900">
+                  {user.name}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div class="flex items-center gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c] shadow-sm"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="m3 7 9 6 9-6" />
+                </svg>
+              </div>
+
+              <div class="min-w-0">
+                <p
+                  class="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400"
+                >
+                  Email
+                </p>
+
+                <p class="mt-1 break-all text-sm font-black text-slate-900">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div class="flex items-center gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c] shadow-sm"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 21h18" />
+                  <path d="M5 21V9l7-5 7 5v12" />
+                  <path d="M9 21v-6h6v6" />
+                </svg>
+              </div>
+
+              <div class="min-w-0">
+                <p
+                  class="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400"
+                >
+                  Sekolah
+                </p>
+
+                <p class="mt-1 text-sm font-black text-slate-900">
+                  {user.school ?? "Belum diisi"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div class="flex items-center gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#0c438c] shadow-sm"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M4 5h16v14H4z" />
+                  <path d="M8 9h8" />
+                  <path d="M8 13h5" />
+                </svg>
+              </div>
+
+              <div class="min-w-0">
+                <p
+                  class="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400"
+                >
+                  Kelas
+                </p>
+
+                <p class="mt-1 text-sm font-black text-slate-900">
+                  {user.className ?? "Belum diisi"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="mt-5 flex items-start gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3"
+        >
+          <div
+            class="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+          ></div>
+
+          <div>
+            <p class="text-xs font-bold text-slate-700">Akun aktif</p>
+
+            <p class="mt-0.5 text-xs leading-5 text-slate-400">
+              Kamu sedang login sebagai {displayRole.toLowerCase()}.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-
-  <!-- SECURITY -->
-  <section
-    class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-  >
-    <div class="flex items-start gap-4">
-      <div
-        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700"
-      >
-        <svg
-          class="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-        >
-          <rect x="5" y="10" width="14" height="10" rx="2" />
-          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-        </svg>
-      </div>
-
-      <div>
-        <h3 class="font-black text-slate-900">Keamanan Akun</h3>
-
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-          Gunakan akun hanya untuk keperluan sistem tryout dan jangan membagikan
-          password kepada pengguna lain.
-        </p>
-      </div>
-    </div>
-  </section>
 </section>
