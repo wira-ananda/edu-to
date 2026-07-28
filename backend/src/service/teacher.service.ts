@@ -274,6 +274,61 @@ async function createSubject(teacherId: string, input: TeacherSubjectInput) {
   };
 }
 
+async function deleteSubject(teacherId: string, subjectId: string) {
+  const subject = await prisma.subject.findFirst({
+    where: {
+      id: subjectId,
+      ownerId: teacherId,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!subject) {
+    throw new TeacherServiceError("Bank soal tidak ditemukan", 404);
+  }
+
+  const [questionCount, tryoutCount] = await Promise.all([
+    prisma.question.count({
+      where: {
+        subjectId: subject.id,
+      },
+    }),
+
+    prisma.tryout.count({
+      where: {
+        subjectId: subject.id,
+      },
+    }),
+  ]);
+
+  if (questionCount > 0) {
+    throw new TeacherServiceError(
+      `Bank soal "${subject.name}" tidak dapat dihapus karena masih memiliki ${questionCount} soal.`,
+      400,
+    );
+  }
+
+  if (tryoutCount > 0) {
+    throw new TeacherServiceError(
+      `Bank soal "${subject.name}" tidak dapat dihapus karena masih digunakan oleh ${tryoutCount} tryout.`,
+      400,
+    );
+  }
+
+  await prisma.subject.delete({
+    where: {
+      id: subject.id,
+    },
+  });
+
+  return {
+    message: "Bank soal berhasil dihapus.",
+  };
+}
+
 function analyzeQuestion(input: TeacherAnalyzeQuestionInput) {
   const difficulty = classifyQuestionDifficulty({
     questionText: input.questionText,
@@ -1641,6 +1696,7 @@ export default {
   deleteTryout,
 
   getTryoutParticipants,
+  deleteSubject,
   enrollStudent,
   approveEnrollment,
   rejectEnrollment,

@@ -34,11 +34,18 @@
     };
   };
 
+  type DeleteSubjectResponse = {
+    ok: boolean;
+    message: string;
+  };
+
   let loading = $state(true);
   let refreshing = $state(false);
-  let deletingId = $state("");
-  let creatingSubject = $state(false);
 
+  let deletingQuestionId = $state("");
+  let deletingSubjectId = $state("");
+
+  let creatingSubject = $state(false);
   let showCreateBank = $state(false);
 
   let errorMessage = $state("");
@@ -47,9 +54,7 @@
   let newSubjectName = $state("");
 
   let banks = $state<TeacherQuestionBanksResponse["banks"]>([]);
-
   let questions = $state<TeacherQuestionsResponse["questions"]>([]);
-
   let subjects = $state<TeacherSubjectsResponse["subjects"]>([]);
 
   let selectedSubjectId = $state("");
@@ -60,6 +65,10 @@
 
   const selectedQuestions = $derived(
     questions.filter((question) => question.subjectId === selectedSubjectId),
+  );
+
+  const isMutating = $derived(
+    Boolean(deletingQuestionId || deletingSubjectId || creatingSubject),
   );
 
   function resolveSelectedBank() {
@@ -93,9 +102,7 @@
     errorMessage = "";
 
     const cachedBanks = !force ? readTeacherQuestionBanksCache() : null;
-
     const cachedQuestions = !force ? readTeacherQuestionsCache() : null;
-
     const cachedSubjects = !force ? readTeacherSubjectsCache() : null;
 
     if (cachedBanks) {
@@ -149,6 +156,8 @@
 
   async function refreshData() {
     refreshing = true;
+
+    errorMessage = "";
     successMessage = "";
 
     invalidateTeacherQuestionBanksCache();
@@ -166,6 +175,7 @@
 
   function selectBank(bankId: string) {
     selectedSubjectId = bankId;
+
     errorMessage = "";
     successMessage = "";
   }
@@ -192,7 +202,6 @@
 
     if (!name) {
       errorMessage = "Nama bank soal wajib diisi.";
-
       return;
     }
 
@@ -220,7 +229,6 @@
       await loadData();
 
       selectedSubjectId = result.subject.id;
-
       showCreateBank = false;
 
       successMessage = "Bank soal berhasil dibuat.";
@@ -232,6 +240,56 @@
     }
   }
 
+  async function deleteSubject() {
+    if (!selectedBank) {
+      return;
+    }
+
+    const bank = selectedBank;
+
+    const confirmed = confirm(
+      `Hapus bank soal "${bank.name}"?\n\nBank hanya dapat dihapus jika tidak memiliki soal dan tidak sedang digunakan oleh tryout.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    deletingSubjectId = bank.id;
+
+    errorMessage = "";
+    successMessage = "";
+
+    try {
+      const result = await apiFetch<DeleteSubjectResponse>(
+        `/teacher/subjects/${bank.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      /*
+       * Reset selection lebih dulu supaya resolveSelectedBank()
+       * otomatis memilih bank berikutnya setelah data dimuat ulang.
+       */
+      selectedSubjectId = "";
+
+      invalidateTeacherQuestionBanksCache();
+      invalidateTeacherSubjectsCache();
+
+      await loadData({
+        force: true,
+      });
+
+      successMessage = result.message || "Bank soal berhasil dihapus.";
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal menghapus bank soal.";
+    } finally {
+      deletingSubjectId = "";
+    }
+  }
+
   async function deleteQuestion(id: string) {
     const confirmed = confirm("Hapus soal ini?");
 
@@ -239,7 +297,7 @@
       return;
     }
 
-    deletingId = id;
+    deletingQuestionId = id;
 
     errorMessage = "";
     successMessage = "";
@@ -258,7 +316,7 @@
       errorMessage =
         error instanceof Error ? error.message : "Gagal menghapus soal.";
     } finally {
-      deletingId = "";
+      deletingQuestionId = "";
     }
   }
 
@@ -290,16 +348,21 @@
       <button
         type="button"
         onclick={refreshData}
-        disabled={loading || refreshing}
-        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+        disabled={loading || refreshing || isMutating}
+        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {refreshing ? "Memuat..." : "Refresh"}
       </button>
 
       <button
         type="button"
-        onclick={() => (showCreateBank = !showCreateBank)}
-        class="rounded-xl border border-[#0c438c]/20 bg-blue-50 px-4 py-2.5 text-sm font-bold text-[#0c438c]"
+        onclick={() => {
+          showCreateBank = !showCreateBank;
+          errorMessage = "";
+          successMessage = "";
+        }}
+        disabled={isMutating}
+        class="rounded-xl border border-[#0c438c]/20 bg-blue-50 px-4 py-2.5 text-sm font-bold text-[#0c438c] transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
         + Bank Soal
       </button>
@@ -307,10 +370,10 @@
       <button
         type="button"
         onclick={openNewQuestion}
-        disabled={!selectedSubjectId}
-        class="relative overflow-hidden rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#0c438c] disabled:opacity-50"
+        disabled={!selectedSubjectId || isMutating}
+        class="relative overflow-hidden rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#0c438c] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <span class="relative z-10"> + Tambah Soal </span>
+        <span class="relative z-10">+ Tambah Soal</span>
 
         <span class="absolute bottom-0 left-0 h-1 w-full bg-[#f8c900]"></span>
       </button>
@@ -346,6 +409,10 @@
             Nama Bank Soal
           </label>
 
+          <p class="mt-1 text-xs text-slate-400">
+            Gunakan nama yang mudah dikenali, misalnya mata pelajaran dan kelas.
+          </p>
+
           <input
             id="subjectName"
             type="text"
@@ -359,9 +426,12 @@
         <div class="flex gap-2">
           <button
             type="button"
-            onclick={() => (showCreateBank = false)}
+            onclick={() => {
+              showCreateBank = false;
+              newSubjectName = "";
+            }}
             disabled={creatingSubject}
-            class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600"
+            class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
           >
             Batal
           </button>
@@ -369,7 +439,7 @@
           <button
             type="submit"
             disabled={creatingSubject || !newSubjectName.trim()}
-            class="rounded-xl bg-[#062b63] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
+            class="rounded-xl bg-[#062b63] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0c438c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {creatingSubject ? "Membuat..." : "Buat Bank"}
           </button>
@@ -424,7 +494,7 @@
       <button
         type="button"
         onclick={() => (showCreateBank = true)}
-        class="mt-5 rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white"
+        class="mt-5 rounded-xl bg-[#062b63] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0c438c]"
       >
         Buat Bank Soal
       </button>
@@ -447,10 +517,11 @@
           <button
             type="button"
             onclick={() => selectBank(bank.id)}
-            class={`relative overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition ${
+            disabled={Boolean(deletingSubjectId)}
+            class={`relative overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
               selectedSubjectId === bank.id
                 ? "border-[#0c438c] bg-white shadow-md"
-                : "border-slate-200 bg-white hover:border-blue-200"
+                : "border-slate-200 bg-white hover:border-blue-200 hover:shadow-md"
             }`}
           >
             {#if selectedSubjectId === bank.id}
@@ -519,7 +590,7 @@
       >
         <div class="border-b border-slate-100 p-5 sm:p-6">
           <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
           >
             <div>
               <p
@@ -538,14 +609,55 @@
               </p>
             </div>
 
-            <button
-              type="button"
-              onclick={openNewQuestion}
-              class="w-fit rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white"
-            >
-              + Tambah Soal ke Bank Ini
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onclick={deleteSubject}
+                disabled={Boolean(deletingSubjectId)}
+                class="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingSubjectId === selectedBank.id
+                  ? "Menghapus Bank..."
+                  : "Hapus Bank"}
+              </button>
+
+              <button
+                type="button"
+                onclick={openNewQuestion}
+                disabled={Boolean(deletingSubjectId)}
+                class="relative overflow-hidden rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#0c438c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span class="relative z-10"> + Tambah Soal ke Bank Ini </span>
+
+                <span class="absolute bottom-0 left-0 h-1 w-full bg-[#f8c900]"
+                ></span>
+              </button>
+            </div>
           </div>
+
+          {#if selectedQuestions.length > 0}
+            <div
+              class="mt-4 flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5"
+            >
+              <svg
+                class="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5" />
+                <path d="M12 16h.01" />
+              </svg>
+
+              <p class="text-xs font-semibold leading-5 text-amber-700">
+                Bank soal yang masih memiliki soal tidak dapat dihapus. Hapus
+                semua soal terlebih dahulu jika bank memang sudah tidak
+                digunakan.
+              </p>
+            </div>
+          {/if}
         </div>
 
         <div class="overflow-x-auto">
@@ -554,13 +666,10 @@
               class="bg-slate-50 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400"
             >
               <tr>
-                <th class="px-5 py-4"> Soal </th>
-
-                <th class="px-5 py-4"> Difficulty </th>
-
-                <th class="px-5 py-4"> Prioritas </th>
-
-                <th class="px-5 py-4 text-right"> Aksi </th>
+                <th class="px-5 py-4">Soal</th>
+                <th class="px-5 py-4">Difficulty</th>
+                <th class="px-5 py-4">Prioritas</th>
+                <th class="px-5 py-4 text-right">Aksi</th>
               </tr>
             </thead>
 
@@ -568,7 +677,24 @@
               {#if selectedQuestions.length === 0}
                 <tr>
                   <td colspan="4" class="px-5 py-12 text-center">
-                    <p class="font-bold text-slate-700">
+                    <div
+                      class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-400"
+                    >
+                      <svg
+                        class="h-5 w-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
+                        <path d="M8 6h8" />
+                        <path d="M8 10h8" />
+                        <path d="M8 14h5" />
+                        <rect x="4" y="3" width="16" height="18" rx="2" />
+                      </svg>
+                    </div>
+
+                    <p class="mt-3 font-bold text-slate-700">
                       Bank ini belum memiliki soal.
                     </p>
 
@@ -576,6 +702,14 @@
                       Tambahkan soal pertama ke
                       {selectedBank.name}.
                     </p>
+
+                    <button
+                      type="button"
+                      onclick={openNewQuestion}
+                      class="mt-4 rounded-xl border border-[#0c438c]/20 bg-blue-50 px-4 py-2 text-xs font-bold text-[#0c438c] transition hover:bg-blue-100"
+                    >
+                      + Tambah Soal Pertama
+                    </button>
                   </td>
                 </tr>
               {:else}
@@ -624,18 +758,19 @@
                         <button
                           type="button"
                           onclick={() => openEditQuestion(question.id)}
-                          class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                          disabled={deletingQuestionId === question.id}
+                          class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                         >
                           Edit
                         </button>
 
                         <button
                           type="button"
-                          disabled={deletingId === question.id}
+                          disabled={deletingQuestionId === question.id}
                           onclick={() => deleteQuestion(question.id)}
-                          class="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                          class="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {deletingId === question.id
+                          {deletingQuestionId === question.id
                             ? "Menghapus..."
                             : "Hapus"}
                         </button>
