@@ -1,53 +1,60 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
   import { getContext } from "svelte";
   import type { AppUser } from "$lib/auth";
+  import RoleDashboard from "$lib/components/dashboard/RoleDashboard.svelte";
+  import type { DashboardAction, DashboardCard } from "$lib/types/dashboard";
 
   const getAppUser = getContext<() => AppUser>("appUser");
+
   const user = $derived(getAppUser());
+
+  const cards = $derived.by<DashboardCard[]>(() => [
+    {
+      label: "Sekolah",
+      value: user.school ?? "-",
+      tone: "blue",
+    },
+    {
+      label: "Kelas",
+      value: user.className ?? "-",
+      tone: "yellow",
+    },
+    {
+      label: "Status Akun",
+      value: "Siswa",
+      description: "Akun aktif untuk mengikuti tryout.",
+      tone: "green",
+    },
+  ]);
+
+  const actions: DashboardAction[] = [
+    {
+      title: "Mulai Tryout",
+      description:
+        "Lihat tryout yang tersedia, gunakan kode bergabung, dan mulai mengerjakan.",
+      href: "/student/tryouts",
+      label: "Pilih Tryout",
+      primary: true,
+    },
+    {
+      title: "Riwayat Tryout",
+      description:
+        "Lihat kembali seluruh sesi tryout yang pernah kamu kerjakan.",
+      href: "/student/history",
+      label: "Lihat Riwayat",
+    },
+    {
+      title: "Hasil Belajar",
+      description: "Pantau nilai dan perkembangan hasil pengerjaan tryout.",
+      href: "/student/results",
+      label: "Lihat Hasil",
+    },
+  ];
 </script>
 
-<section class="space-y-6">
-  <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 class="text-2xl font-bold text-slate-950">Dashboard Siswa</h2>
-
-    <p class="mt-2 text-sm leading-6 text-slate-600">
-      Selamat datang,
-      <span class="font-bold text-slate-900">{user.name}</span>. Kamu dapat
-      memulai tryout dan melihat hasil belajar dari halaman ini.
-    </p>
-
-    <div class="mt-6 grid gap-4 md:grid-cols-3">
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p class="text-sm font-semibold text-slate-500">Sekolah</p>
-        <p class="mt-2 text-lg font-bold text-slate-950">
-          {user.school ?? "-"}
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p class="text-sm font-semibold text-slate-500">Kelas</p>
-        <p class="mt-2 text-lg font-bold text-slate-950">
-          {user.className ?? "-"}
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p class="text-sm font-semibold text-slate-500">Role</p>
-        <p class="mt-2 text-lg font-bold text-slate-950">
-          {user.role}
-        </p>
-      </div>
-    </div>
-
-    <div class="mt-6">
-      <button
-        type="button"
-        onclick={() => goto("/student/tryouts")}
-        class="rounded-xl bg-blue-900 px-5 py-2.5 text-sm font-bold text-white"
-      >
-        Mulai Tryout
-      </button>
-    </div>
-  </div>
-</section>
+<RoleDashboard
+  title={`Halo, ${user.name}`}
+  description="Siap untuk latihan hari ini? Pilih tryout yang tersedia dan pantau perkembangan hasil belajarmu."
+  {cards}
+  {actions}
+/>
