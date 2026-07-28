@@ -3,8 +3,8 @@
   import { setContext, type Snippet } from "svelte";
   import type { AppUser } from "$lib/auth";
   import type { AppNavGroup, AppNavItem } from "$lib/types/navigation";
-  import Sidebar from "./Sidebar.svelte";
-  import Topbar from "./Topbar.svelte";
+  import Sidebar from "./AppSidebar.svelte";
+  import Topbar from "./AppHeader.svelte";
 
   type Props = {
     user: AppUser;
