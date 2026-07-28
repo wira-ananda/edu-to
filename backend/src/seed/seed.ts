@@ -41,7 +41,7 @@ const users: SeedUser[] = [
     className: null,
   },
   {
-    email: "RahmaHakim@test.com",
+    email: "rahmahakim@test.com",
     password: "qazwsx123",
     name: "Rahmah Hakim, S.Pd",
     role: "TEACHER",
