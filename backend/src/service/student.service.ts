@@ -76,25 +76,37 @@ const resultSessionInclude = {
       subject: true,
     },
   },
+
   answers: {
     select: {
       id: true,
       selectedAnswer: true,
       isCorrect: true,
       answeredAt: true,
+
       question: {
         select: {
+          id: true,
           questionText: true,
+
+          optionA: true,
+          optionB: true,
+          optionC: true,
+          optionD: true,
+
           correctAnswer: true,
+
           imageUrl: true,
           imageAltText: true,
         },
       },
     },
+
     orderBy: {
       answeredAt: "asc",
     },
   },
+
   wrsLogs: {
     select: {
       id: true,
@@ -105,12 +117,14 @@ const resultSessionInclude = {
       selectedQuestionWeight: true,
       selectedQuestionDifficulty: true,
       createdAt: true,
+
       question: {
         select: {
           questionText: true,
         },
       },
     },
+
     orderBy: {
       createdAt: "asc",
     },
@@ -1307,6 +1321,7 @@ async function getSessionResult(userId: string, sessionId: string) {
         id: sessionId,
         userId,
       },
+
       include: resultSessionInclude,
     });
 
@@ -1317,38 +1332,77 @@ async function getSessionResult(userId: string, sessionId: string) {
   return {
     session: {
       id: session.id,
+
       attemptNumber: session.attemptNumber,
+
       tryoutTitle: session.tryout.title,
+
       bankName: session.tryout.subject.name,
+
       initialLevel: session.initialLevel,
+
       currentLevel: session.currentLevel,
+
       totalQuestions: session.totalQuestions,
+
       score: session.score,
+
       correctCount: session.correctCount,
+
       wrongCount: session.wrongCount,
+
       status: session.status,
+
       startedAt: session.startedAt,
+
       finishedAt: session.finishedAt,
     },
+
     answers: session.answers.map((answer) => ({
       id: answer.id,
+
+      questionId: answer.question.id,
+
       questionText: answer.question.questionText,
+
+      optionA: answer.question.optionA,
+
+      optionB: answer.question.optionB,
+
+      optionC: answer.question.optionC,
+
+      optionD: answer.question.optionD,
+
       imageUrl: answer.question.imageUrl,
+
       imageAltText: answer.question.imageAltText,
+
       selectedAnswer: answer.selectedAnswer,
+
       correctAnswer: answer.question.correctAnswer,
+
       isCorrect: answer.isCorrect,
+
       answeredAt: answer.answeredAt,
     })),
+
     wrsLogs: session.wrsLogs.map((log) => ({
       id: log.id,
+
       currentLevel: log.currentLevel,
+
       candidateCount: log.candidateCount,
+
       totalWeight: log.totalWeight,
+
       randomValue: log.randomValue,
+
       selectedQuestionWeight: log.selectedQuestionWeight,
+
       selectedQuestionDifficulty: log.selectedQuestionDifficulty,
+
       questionText: log.question.questionText,
+
       createdAt: log.createdAt,
     })),
   };
