@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from "$app/state";
+
   import type { Snippet } from "svelte";
 
   import type { AppUser } from "$lib/auth";
@@ -14,16 +16,11 @@
 
   type Props = {
     user: AppUser;
-
     panelLabel: string;
-
     navGroups: AppNavGroup[];
 
-    activeHref: string;
-
-    title: string;
-
-    breadcrumbs: BreadcrumbItem[];
+    title?: string;
+    breadcrumbs?: BreadcrumbItem[];
 
     focusMode?: boolean;
 
@@ -36,15 +33,16 @@
     user,
     panelLabel,
     navGroups,
-    activeHref,
-    title,
-    breadcrumbs,
+    title = "",
+    breadcrumbs = [],
     focusMode = false,
     onLogout,
     children,
   }: Props = $props();
 
   let mobileOpen = $state(false);
+
+  const activeHref = $derived(page.url.pathname);
 
   function openSidebar() {
     if (focusMode) {

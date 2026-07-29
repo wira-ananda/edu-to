@@ -1,59 +1,61 @@
 <script lang="ts">
   import RoleDashboard from "$lib/components/dashboard/RoleDashboard.svelte";
+
   import type { DashboardAction, DashboardCard } from "$lib/types/dashboard";
 
   const cards: DashboardCard[] = [
     {
-      label: "Difficulty",
+      label: "Tingkat Kesulitan",
       value: "Otomatis",
       description:
-        "Sistem membaca teks soal dan indikator untuk menentukan tingkat kesulitan.",
+        "Tingkat kesulitan soal ditentukan sistem berdasarkan karakteristik teks soal.",
       tone: "blue",
     },
     {
-      label: "Prioritas",
-      value: "Dipilih Admin",
+      label: "Prioritas Soal",
+      value: "Diatur Pengelola",
       description:
-        "Prioritas soal dapat diatur rendah, normal, tinggi, atau sangat tinggi.",
+        "Prioritas menentukan bobot soal yang digunakan pada proses pemilihan WRS.",
       tone: "yellow",
     },
     {
-      label: "Bobot WRS",
-      value: "Dihitung Sistem",
+      label: "Pemilihan Soal",
+      value: "WRS",
       description:
-        "Bobot digunakan untuk menentukan peluang kemunculan soal pada tryout.",
+        "Weighted Random Sampling memilih soal secara acak berdasarkan bobot kandidat.",
       tone: "green",
     },
   ];
 
   const actions: DashboardAction[] = [
     {
-      title: "Kelola Bank Soal",
+      title: "Bank Soal",
       description:
-        "Lihat seluruh bank soal, soal, tingkat kesulitan, dan prioritas.",
+        "Kelola mata pelajaran, soal, tingkat kesulitan, dan prioritas soal.",
       href: "/admin/questions",
-      label: "Lihat Bank Soal",
+      label: "Kelola Bank Soal",
       primary: true,
     },
     {
-      title: "Kelola Tryout",
+      title: "Tryout",
       description:
-        "Buat dan kelola paket tryout yang dapat dikerjakan oleh siswa.",
+        "Buat paket tryout, atur jumlah soal, durasi, dan akses peserta.",
       href: "/admin/tryouts",
-      label: "Lihat Tryout",
+      label: "Kelola Tryout",
     },
     {
-      title: "Kelola Guru",
-      description: "Kelola akun guru yang memiliki akses ke sistem EduTryout.",
+      title: "Akun Guru",
+      description:
+        "Tambahkan atau kelola guru yang memiliki akses ke panel guru.",
       href: "/admin/users",
-      label: "Lihat Guru",
+      label: "Kelola Guru",
     },
   ];
 </script>
 
 <RoleDashboard
   title="Dashboard Admin"
-  description="Kelola bank soal, klasifikasi tingkat kesulitan, prioritas soal, tryout, serta pengguna dalam satu tempat."
+  description="Kelola bank soal, tryout, pengguna, dan konfigurasi pembelajaran dalam satu panel."
   {cards}
   {actions}
 />

@@ -1,28 +1,37 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { apiFetch } from "$lib/api";
-  import {
-    invalidateTeacherTryoutRelatedCaches,
-    invalidateTeacherTryoutsCache,
-  } from "$lib/cache/teacher-page-cache";
+
   import { getTryoutStatusLabel, tryoutStatusOptions } from "$lib/types/admin";
+
   import type { TryoutStatus } from "$lib/types/admin";
+
   import type {
-    TeacherCreateTryoutPayload,
-    TeacherMutateTryoutResponse,
-    TeacherSubjectsResponse,
-    TeacherTryoutResponse,
-    TeacherUpdateTryoutPayload,
-  } from "$lib/types/teacher";
+    TryoutFormInitialValue,
+    TryoutFormMode,
+    TryoutFormPayload,
+    TryoutFormSubject,
+  } from "$lib/types/tryout-form";
 
   type MaxAttemptsMode = "LIMITED" | "UNLIMITED";
 
   type Props = {
-    mode: "create" | "edit";
-    subjects: TeacherSubjectsResponse["subjects"];
-    initialTryout?: TeacherTryoutResponse["tryout"] | null;
+    mode: TryoutFormMode;
+    subjects: TryoutFormSubject[];
+
+    initialTryout?: TryoutFormInitialValue | null;
     defaultSubjectId?: string;
+
+    saving?: boolean;
+    errorMessage?: string;
+
+    backHref: string;
+    questionBankHref: string;
+    newQuestionHref: string;
+
+    description?: string;
+
+    onSubmit: (payload: TryoutFormPayload) => void | Promise<void>;
   };
 
   let {
@@ -30,26 +39,30 @@
     subjects,
     initialTryout = null,
     defaultSubjectId = "",
+    saving = false,
+    errorMessage = "",
+    backHref,
+    questionBankHref,
+    newQuestionHref,
+    description = "",
+    onSubmit,
   }: Props = $props();
 
-  /*
-   * Jangan isi $state langsung dari props.
-   * Local form state diinisialisasi saat component mount.
-   */
   let initialized = $state(false);
 
   let subjectId = $state("");
   let title = $state("");
+
   let totalQuestions = $state(1);
   let durationMinutes = $state(45);
 
   let maxAttemptsMode = $state<MaxAttemptsMode>("LIMITED");
+
   let maxAttempts = $state(1);
 
   let status = $state<TryoutStatus>("OPEN");
 
-  let saving = $state(false);
-  let errorMessage = $state("");
+  let validationError = $state("");
 
   const selectedSubject = $derived(
     subjects.find((subject) => subject.id === subjectId) ?? null,
@@ -130,9 +143,10 @@
   const pageTitle = $derived(mode === "create" ? "Buat Tryout" : "Edit Tryout");
 
   const pageDescription = $derived(
-    mode === "create"
-      ? "Buat paket tryout dari salah satu bank soal milikmu."
-      : "Perbarui konfigurasi paket tryout milikmu.",
+    description ||
+      (mode === "create"
+        ? "Buat paket tryout dari bank soal yang tersedia."
+        : "Perbarui konfigurasi paket tryout."),
   );
 
   const submitLabel = $derived(
@@ -145,36 +159,30 @@
 
     maxAttemptsMode = "LIMITED";
     maxAttempts = 1;
+
     status = "OPEN";
 
-    /*
-     * Jika datang dari Bank Soal dengan ?subjectId=...
-     * prioritaskan subject tersebut SELAMA ada.
-     */
     const defaultSubject = defaultSubjectId
       ? (subjects.find((subject) => subject.id === defaultSubjectId) ?? null)
       : null;
 
-    /*
-     * Kalau default subject tidak ada,
-     * pilih bank pertama yang MEMILIKI soal.
-     */
     const firstUsableSubject =
       subjects.find((subject) => subject.totalAvailableQuestions > 0) ?? null;
 
     const selectedInitialSubject =
-      defaultSubject?.totalAvailableQuestions &&
-      defaultSubject.totalAvailableQuestions > 0
+      defaultSubject && defaultSubject.totalAvailableQuestions > 0
         ? defaultSubject
         : firstUsableSubject;
 
     if (!selectedInitialSubject) {
       subjectId = "";
       totalQuestions = 1;
+
       return;
     }
 
     subjectId = selectedInitialSubject.id;
+
     totalQuestions = selectedInitialSubject.totalAvailableQuestions;
   }
 
@@ -184,9 +192,13 @@
     }
 
     subjectId = initialTryout.subjectId;
+
     title = initialTryout.title;
+
     totalQuestions = initialTryout.totalQuestions;
+
     durationMinutes = initialTryout.durationMinutes;
+
     status = initialTryout.status;
 
     if (initialTryout.maxAttempts === null) {
@@ -216,31 +228,24 @@
     const select = event.currentTarget as HTMLSelectElement;
 
     subjectId = select.value;
-    errorMessage = "";
+
+    validationError = "";
 
     const subject = subjects.find((item) => item.id === subjectId) ?? null;
 
-    if (!subject) {
+    if (!subject || subject.totalAvailableQuestions === 0) {
       totalQuestions = 1;
+
       return;
     }
 
-    if (subject.totalAvailableQuestions === 0) {
-      totalQuestions = 1;
-      return;
-    }
-
-    /*
-     * Saat user mengganti bank:
-     * default gunakan seluruh soal yang tersedia.
-     * User tetap bisa menguranginya.
-     */
     totalQuestions = subject.totalAvailableQuestions;
   }
 
   function setMaxAttemptsMode(nextMode: MaxAttemptsMode) {
     maxAttemptsMode = nextMode;
-    errorMessage = "";
+
+    validationError = "";
 
     if (nextMode === "LIMITED" && maxAttempts < 1) {
       maxAttempts = 1;
@@ -250,15 +255,16 @@
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
 
-    errorMessage = "";
+    validationError = "";
 
     if (mode === "edit" && !initialTryout?.id) {
-      errorMessage = "ID tryout tidak valid.";
+      validationError = "ID tryout tidak valid.";
+
       return;
     }
 
     if (formInvalid) {
-      errorMessage =
+      validationError =
         totalQuestionsError ||
         durationError ||
         maxAttemptsError ||
@@ -267,52 +273,16 @@
       return;
     }
 
-    saving = true;
+    const payload: TryoutFormPayload = {
+      subjectId,
+      title: title.trim(),
+      totalQuestions,
+      durationMinutes,
+      maxAttempts: maxAttemptsMode === "UNLIMITED" ? null : maxAttempts,
+      status,
+    };
 
-    try {
-      const commonPayload = {
-        subjectId,
-        title: title.trim(),
-        totalQuestions,
-        durationMinutes,
-        maxAttempts: maxAttemptsMode === "UNLIMITED" ? null : maxAttempts,
-        status,
-      };
-
-      if (mode === "create") {
-        const payload: TeacherCreateTryoutPayload = commonPayload;
-
-        await apiFetch<TeacherMutateTryoutResponse>("/teacher/tryouts", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-
-        invalidateTeacherTryoutsCache();
-      } else {
-        const payload: TeacherUpdateTryoutPayload = commonPayload;
-
-        await apiFetch<TeacherMutateTryoutResponse>(
-          `/teacher/tryouts/${initialTryout!.id}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          },
-        );
-
-        invalidateTeacherTryoutRelatedCaches(initialTryout!.id);
-      }
-
-      await goto("/teacher/tryouts");
-    } catch (error) {
-      errorMessage =
-        error instanceof Error
-          ? error.message
-          : mode === "create"
-            ? "Gagal membuat tryout."
-            : "Gagal memperbarui tryout.";
-    } finally {
-      saving = false;
-    }
+    await onSubmit(payload);
   }
 
   onMount(() => {
@@ -324,7 +294,7 @@
   <div>
     <button
       type="button"
-      onclick={() => goto("/teacher/tryouts")}
+      onclick={() => goto(backHref)}
       class="mb-3 inline-flex items-center gap-2 text-sm font-bold text-[#0c438c]"
     >
       <svg
@@ -353,11 +323,11 @@
     </p>
   </div>
 
-  {#if errorMessage}
+  {#if validationError || errorMessage}
     <div
       class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
-      {errorMessage}
+      {validationError || errorMessage}
     </div>
   {/if}
 
@@ -365,7 +335,7 @@
     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-6">
       <div class="flex items-start gap-4">
         <div
-          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 font-black text-amber-700"
         >
           !
         </div>
@@ -374,12 +344,12 @@
           <h3 class="font-black text-amber-900">Belum ada bank soal</h3>
 
           <p class="mt-1 text-sm leading-6 text-amber-700">
-            Kamu harus membuat bank soal terlebih dahulu sebelum membuat tryout.
+            Buat bank soal terlebih dahulu sebelum membuat tryout.
           </p>
 
           <button
             type="button"
-            onclick={() => goto("/teacher/questions")}
+            onclick={() => goto(questionBankHref)}
             class="mt-4 rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white"
           >
             Buka Bank Soal
@@ -408,7 +378,7 @@
 
           <button
             type="button"
-            onclick={() => goto("/teacher/questions/new")}
+            onclick={() => goto(newQuestionHref)}
             class="mt-4 rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white"
           >
             + Tambah Soal
@@ -418,6 +388,7 @@
     </div>
   {:else}
     <form class="space-y-5" onsubmit={handleSubmit}>
+      <!-- IDENTITAS -->
       <section
         class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
       >
@@ -471,7 +442,10 @@
                   disabled={mode === "create" &&
                     subject.totalAvailableQuestions === 0}
                 >
-                  {subject.name} · {subject.totalAvailableQuestions} soal
+                  {subject.name}
+                  ·
+                  {subject.totalAvailableQuestions}
+                  soal
                   {subject.totalAvailableQuestions === 0 ? " · Kosong" : ""}
                 </option>
               {/each}
@@ -522,6 +496,7 @@
         {/if}
       </section>
 
+      <!-- PENGERJAAN -->
       <section
         class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
       >
@@ -571,7 +546,8 @@
               </p>
             {:else if maximumQuestions > 0}
               <p class="mt-2 text-xs text-slate-400">
-                Maksimal {maximumQuestions} soal.
+                Maksimal {maximumQuestions}
+                soal.
               </p>
             {/if}
           </div>
@@ -611,6 +587,7 @@
         </div>
       </section>
 
+      <!-- ACCESS -->
       <section
         class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
       >
@@ -726,12 +703,13 @@
         </div>
       </section>
 
+      <!-- ACTION -->
       <div
         class="flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:justify-end"
       >
         <button
           type="button"
-          onclick={() => goto("/teacher/tryouts")}
+          onclick={() => goto(backHref)}
           disabled={saving}
           class="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
         >

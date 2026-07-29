@@ -1,16 +1,27 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import TeacherTryoutForm from "$lib/components/tryouts/TeacherTryoutForm.svelte";
+
+  import { apiFetch } from "$lib/api";
+
+  import TryoutForm from "$lib/components/tryouts/TryoutForm.svelte";
+
   import {
     getTeacherSubjectsCached,
     getTeacherTryoutDetailCached,
+    invalidateTeacherTryoutRelatedCaches,
     readTeacherSubjectsCache,
     readTeacherTryoutDetailCache,
   } from "$lib/cache/teacher-page-cache";
+
+  import type { TryoutFormPayload } from "$lib/types/tryout-form";
+
   import type {
+    TeacherMutateTryoutResponse,
     TeacherSubjectsResponse,
     TeacherTryoutResponse,
+    TeacherUpdateTryoutPayload,
   } from "$lib/types/teacher";
 
   const id = $derived(page.params.id ?? "");
@@ -27,21 +38,27 @@
 
   let loading = $state(!cachedSubjects || !cachedTryout);
 
+  let saving = $state(false);
+
   let errorMessage = $state("");
 
   async function loadData() {
     if (!id) {
       errorMessage = "ID tryout tidak valid.";
+
       loading = false;
+
       return;
     }
 
     if (subjects.length > 0 && tryout) {
       loading = false;
+
       return;
     }
 
     loading = true;
+
     errorMessage = "";
 
     try {
@@ -54,6 +71,7 @@
       ]);
 
       subjects = nextSubjects;
+
       tryout = nextTryout;
     } catch (error) {
       errorMessage =
@@ -63,12 +81,42 @@
     }
   }
 
+  async function updateTryout(values: TryoutFormPayload) {
+    if (!id) {
+      errorMessage = "ID tryout tidak valid.";
+
+      return;
+    }
+
+    saving = true;
+
+    errorMessage = "";
+
+    try {
+      const payload: TeacherUpdateTryoutPayload = values;
+
+      await apiFetch<TeacherMutateTryoutResponse>(`/teacher/tryouts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+
+      invalidateTeacherTryoutRelatedCaches(id);
+
+      await goto("/teacher/tryouts");
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal memperbarui tryout.";
+    } finally {
+      saving = false;
+    }
+  }
+
   onMount(() => {
     void loadData();
   });
 </script>
 
-{#if errorMessage}
+{#if errorMessage && loading}
   <div
     class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
   >
@@ -85,5 +133,16 @@
     </div>
   </div>
 {:else if tryout}
-  <TeacherTryoutForm mode="edit" {subjects} initialTryout={tryout} />
+  <TryoutForm
+    mode="edit"
+    {subjects}
+    initialTryout={tryout}
+    {saving}
+    {errorMessage}
+    backHref="/teacher/tryouts"
+    questionBankHref="/teacher/questions"
+    newQuestionHref="/teacher/questions/new"
+    description="Perbarui konfigurasi paket tryout milikmu."
+    onSubmit={updateTryout}
+  />
 {/if}
