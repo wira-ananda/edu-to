@@ -1,14 +1,30 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import TeacherQuestionForm from "$lib/components/questions/TeacherQuestionForm.svelte";
+
+  import { apiFetch } from "$lib/api";
+
+  import QuestionForm from "$lib/components/questions/QuestionForm.svelte";
+
   import {
     getTeacherQuestionDetailCached,
     getTeacherSubjectsCached,
+    invalidateTeacherQuestionDataCaches,
     readTeacherQuestionDetailCache,
     readTeacherSubjectsCache,
   } from "$lib/cache/teacher-page-cache";
+
+  import { createQuestionFormData } from "$lib/utils/question-form";
+
   import type {
+    QuestionAnalyzePayload,
+    QuestionFormPayload,
+  } from "$lib/types/question-form";
+
+  import type {
+    TeacherAnalyzeQuestionResponse,
+    TeacherMutateQuestionResponse,
     TeacherQuestionResponse,
     TeacherSubjectsResponse,
   } from "$lib/types/teacher";
@@ -42,6 +58,7 @@
 
     if (subjects.length > 0 && question) {
       loading = false;
+
       return;
     }
 
@@ -69,6 +86,40 @@
     }
   }
 
+  async function analyzeQuestion(payload: QuestionAnalyzePayload) {
+    const result = await apiFetch<TeacherAnalyzeQuestionResponse>(
+      "/teacher/questions/analyze",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+
+    return result.result;
+  }
+
+  async function updateQuestion(payload: QuestionFormPayload) {
+    if (!id) {
+      throw new Error("ID soal tidak valid.");
+    }
+
+    const formData = createQuestionFormData(payload, "edit");
+
+    const result = await apiFetch<TeacherMutateQuestionResponse>(
+      `/teacher/questions/${id}`,
+      {
+        method: "PUT",
+        body: formData,
+      },
+    );
+
+    invalidateTeacherQuestionDataCaches(result.question.id);
+
+    await goto(
+      `/teacher/questions?bank=${encodeURIComponent(payload.subjectId)}`,
+    );
+  }
+
   onMount(() => {
     void loadData();
   });
@@ -82,14 +133,15 @@
   </div>
 {:else if loading}
   <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-    <div class="flex items-center gap-3">
-      <div
-        class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#0c438c]"
-      ></div>
-
-      <p class="text-sm font-semibold text-slate-500">Memuat soal...</p>
-    </div>
+    <p class="text-sm font-semibold text-slate-500">Memuat soal...</p>
   </div>
 {:else if question}
-  <TeacherQuestionForm mode="edit" {subjects} initialQuestion={question} />
+  <QuestionForm
+    mode="edit"
+    {subjects}
+    initialQuestion={question}
+    backHref="/teacher/questions"
+    onAnalyze={analyzeQuestion}
+    onSubmit={updateQuestion}
+  />
 {/if}

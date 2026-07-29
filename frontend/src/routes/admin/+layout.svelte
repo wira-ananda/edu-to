@@ -1,12 +1,15 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
+
   import { apiFetch } from "$lib/api";
+
   import {
     getCurrentUser,
     logout as logoutAuth,
     type AppUser,
   } from "$lib/auth";
+
   import AppShell from "$lib/components/layout/AppShell.svelte";
   import { adminNavGroups } from "$lib/config/navigation";
 
@@ -46,8 +49,16 @@
 </script>
 
 {#if loading}
-  <main class="flex min-h-screen items-center justify-center bg-slate-50">
-    <p class="text-sm font-semibold text-slate-500">Memuat admin...</p>
+  <main class="flex min-h-screen items-center justify-center bg-[#f7f9fc]">
+    <div class="text-center">
+      <div
+        class="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#0d438d]"
+      ></div>
+
+      <p class="mt-4 text-sm font-semibold text-slate-500">
+        Memuat panel admin...
+      </p>
+    </div>
   </main>
 {:else if user}
   <AppShell

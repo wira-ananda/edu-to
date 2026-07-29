@@ -71,10 +71,6 @@ const weightPriorityCycle: WeightPriority[] = [
 /**
  * LOW
  *
- * Sesuai classifier:
- * - kata seperti apa, fungsi, definisi, contoh, ciri-ciri
- * - tidak menambah difficultyScore
- *
  * Total: 34
  */
 const lowQuestions: BaseQuestionSource[] = [
@@ -360,17 +356,6 @@ const lowQuestions: BaseQuestionSource[] = [
 
 /**
  * MEDIUM
- *
- * Menggunakan indikator:
- * - jelaskan
- * - mengapa
- * - bedakan
- * - hubungan
- * - proses
- * - tentukan
- * - klasifikasikan
- *
- * Score umumnya 2-4.
  *
  * Total: 33
  */
@@ -701,17 +686,6 @@ const mediumQuestions: BaseQuestionSource[] = [
 
 /**
  * HIGH
- *
- * Setiap soal sengaja menggunakan minimal dua indikator HOTS.
- *
- * Contoh:
- * - analisis = +3
- * - simpulkan = +3
- * - prediksi = +3
- * - evaluasi = +3
- * - argumentasikan = +3
- *
- * Sehingga score >= 5.
  *
  * Total: 33
  */
@@ -1152,15 +1126,95 @@ async function getTeacher() {
   return teacher;
 }
 
-async function findOrCreateSubject(teacherId: string) {
-  const existingSubject = await prisma.subject.findFirst({
+/**
+ * Hanya mencari subject existing.
+ *
+ * Jangan create dulu sebelum pengecekan
+ * apakah seed sebelumnya sudah pernah dijalankan.
+ */
+async function findExistingSubject(teacherId: string) {
+  return prisma.subject.findFirst({
     where: {
       ownerId: teacherId,
       name: SUBJECT_NAME,
     },
   });
+}
+
+/**
+ * Guard utama.
+ *
+ * Kalau bank yang sama sudah memiliki soal,
+ * atau tryout seed yang sama sudah ada,
+ * script langsung dihentikan.
+ *
+ * TIDAK ADA DELETE DATA.
+ */
+async function assertSeedDoesNotExist(teacherId: string, subjectId: string) {
+  const [existingQuestionCount, existingTryout] = await Promise.all([
+    prisma.question.count({
+      where: {
+        ownerId: teacherId,
+        subjectId,
+      },
+    }),
+
+    prisma.tryout.findFirst({
+      where: {
+        ownerId: teacherId,
+        subjectId,
+        title: TRYOUT_TITLE,
+      },
+
+      select: {
+        id: true,
+        title: true,
+        joinCode: true,
+      },
+    }),
+  ]);
+
+  if (existingQuestionCount === 0 && !existingTryout) {
+    return;
+  }
+
+  const reasons: string[] = [];
+
+  if (existingQuestionCount > 0) {
+    reasons.push(
+      `Bank "${SUBJECT_NAME}" sudah memiliki ${existingQuestionCount} soal.`,
+    );
+  }
+
+  if (existingTryout) {
+    reasons.push(
+      `Tryout "${existingTryout.title}" sudah ada${
+        existingTryout.joinCode
+          ? ` dengan join code ${existingTryout.joinCode}`
+          : ""
+      }.`,
+    );
+  }
+
+  throw new Error(
+    [
+      "",
+      "SEED DIBATALKAN.",
+      "",
+      ...reasons,
+      "",
+      "Data lama TIDAK dihapus.",
+      "Seed Biologi Kelas 10 hanya boleh dijalankan pada target yang masih kosong.",
+    ].join("\n"),
+  );
+}
+
+async function getOrCreateEmptySubject(teacherId: string) {
+  const existingSubject = await findExistingSubject(teacherId);
 
   if (existingSubject) {
+    await assertSeedDoesNotExist(teacherId, existingSubject.id);
+
     return existingSubject;
   }
 
@@ -1275,46 +1329,6 @@ function validateAnswerDistribution(questions: RawQuestion[]) {
   return counts;
 }
 
-async function cleanupExistingData(teacherId: string, subjectId: string) {
-  console.log("Resetting old Biologi Kelas 10 data...");
-
-  const existingTryouts = await prisma.tryout.findMany({
-    where: {
-      ownerId: teacherId,
-      subjectId,
-      title: TRYOUT_TITLE,
-    },
-
-    select: {
-      id: true,
-      title: true,
-    },
-  });
-
-  for (const tryout of existingTryouts) {
-    console.log(`Deleting old tryout: ${tryout.title}`);
-
-    /*
-     * Session, answer, enrollment, dan data turunan
-     * seharusnya terhapus melalui onDelete: Cascade.
-     */
-    await prisma.tryout.delete({
-      where: {
-        id: tryout.id,
-      },
-    });
-  }
-
-  const deletedQuestions = await prisma.question.deleteMany({
-    where: {
-      ownerId: teacherId,
-      subjectId,
-    },
-  });
-
-  console.log(`Deleted ${deletedQuestions.count} old questions.`);
-}
-
 async function seedBiologyQuestions(
   teacherId: string,
   subjectId: string,
@@ -1323,7 +1337,9 @@ async function seedBiologyQuestions(
   for (const rawQuestion of questions) {
     const difficulty = classifyQuestionDifficulty({
       questionText: rawQuestion.questionText,
+
       imageAltText: null,
+
       hasImage: false,
     });
 
@@ -1337,8 +1353,11 @@ async function seedBiologyQuestions(
         questionText: rawQuestion.questionText,
 
         optionA: rawQuestion.optionA,
+
         optionB: rawQuestion.optionB,
+
         optionC: rawQuestion.optionC,
+
         optionD: rawQuestion.optionD,
 
         correctAnswer: rawQuestion.correctAnswer,
@@ -1363,6 +1382,29 @@ async function seedBiologyQuestions(
 }
 
 async function createTryout(teacherId: string, subjectId: string) {
+  /**
+   * Proteksi kedua.
+   *
+   * Walaupun sebelumnya sudah dicek,
+   * kita tetap pastikan tryout belum muncul
+   * sebelum melakukan create.
+   */
+  const existingTryout = await prisma.tryout.findFirst({
+    where: {
+      ownerId: teacherId,
+      subjectId,
+      title: TRYOUT_TITLE,
+    },
+
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingTryout) {
+    throw new Error(`Tryout "${TRYOUT_TITLE}" sudah ada. Seed dibatalkan.`);
+  }
+
   const joinCode = await generateUniqueJoinCode();
 
   return prisma.tryout.create({
@@ -1428,33 +1470,59 @@ async function printDatabaseDistribution(teacherId: string, subjectId: string) {
   });
 
   console.log("");
+
   console.log("Database difficulty distribution:");
+
   console.table(difficultyDistribution);
 
   console.log("");
+
   console.log("Database WRS priority distribution:");
+
   console.table(priorityDistribution);
 
   console.log("");
+
   console.log("Database answer distribution:");
+
   console.table(answerDistribution);
 }
 
 async function main() {
   console.log("Starting Biologi Kelas 10 seed...");
+
   console.log("");
 
+  /**
+   * Validasi source code dulu.
+   */
   assertQuestionCounts();
 
+  /**
+   * Ambil teacher.
+   */
   const teacher = await getTeacher();
 
   console.log(`Teacher: ${teacher.name}`);
+
   console.log(`Email: ${teacher.email}`);
 
-  const subject = await findOrCreateSubject(teacher.id);
+  /**
+   * PENTING:
+   *
+   * Kalau subject sudah ada dan sudah
+   * mempunyai soal / tryout seed,
+   * fungsi ini langsung throw Error.
+   *
+   * Tidak ada data yang dihapus.
+   */
+  const subject = await getOrCreateEmptySubject(teacher.id);
 
   console.log(`Bank soal: ${subject.name}`);
 
+  /**
+   * Build + validate 100 soal.
+   */
   const questions = buildQuestions(biologySources);
 
   const difficultyCounts = validateDifficultyClassification(questions);
@@ -1464,21 +1532,35 @@ async function main() {
   const answerCounts = validateAnswerDistribution(questions);
 
   console.log("");
+
   console.log("Validated difficulty:");
+
   console.table(difficultyCounts);
 
   console.log("");
+
   console.log("Validated WRS priority:");
+
   console.table(priorityCounts);
 
   console.log("");
+
   console.log("Validated correct answer:");
+
   console.table(answerCounts);
 
-  console.log("");
-  console.log("Cleaning old seed data...");
+  /**
+   * Final guard sebelum write.
+   *
+   * Berguna kalau ada kemungkinan data
+   * berubah antara pengecekan awal dan
+   * proses insert.
+   */
+  await assertSeedDoesNotExist(teacher.id, subject.id);
 
-  await cleanupExistingData(teacher.id, subject.id);
+  console.log("");
+
+  console.log("Target database masih kosong.");
 
   console.log("Creating 100 questions...");
 
@@ -1496,16 +1578,27 @@ async function main() {
   });
 
   console.log("");
+
   console.log("Seed completed.");
+
   console.log("------------------------------");
-  console.log(`Teacher : ${teacher.name}`);
-  console.log(`Bank    : ${subject.name}`);
-  console.log(`Questions: ${questionCount}`);
-  console.log(`Tryout  : ${tryout.title}`);
-  console.log(`Join Code: ${tryout.joinCode}`);
-  console.log(`Tryout Questions: ${tryout.totalQuestions}`);
-  console.log(`Duration: ${tryout.durationMinutes} minutes`);
-  console.log(`Max Attempts: ${tryout.maxAttempts ?? "Unlimited"}`);
+
+  console.log(`Teacher   : ${teacher.name}`);
+
+  console.log(`Bank      : ${subject.name}`);
+
+  console.log(`Questions : ${questionCount}`);
+
+  console.log(`Tryout    : ${tryout.title}`);
+
+  console.log(`Join Code : ${tryout.joinCode}`);
+
+  console.log(`Questions : ${tryout.totalQuestions}`);
+
+  console.log(`Duration  : ${tryout.durationMinutes} minutes`);
+
+  console.log(`Attempts  : ${tryout.maxAttempts ?? "Unlimited"}`);
+
   console.log("------------------------------");
 
   await printDatabaseDistribution(teacher.id, subject.id);
@@ -1514,6 +1607,7 @@ async function main() {
 main()
   .catch((error) => {
     console.error("");
+
     console.error("Failed to seed Biologi Kelas 10:", error);
 
     process.exit(1);

@@ -1,12 +1,30 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import TeacherQuestionForm from "$lib/components/questions/TeacherQuestionForm.svelte";
+
+  import { apiFetch } from "$lib/api";
+
+  import QuestionForm from "$lib/components/questions/QuestionForm.svelte";
+
   import {
     getTeacherSubjectsCached,
+    invalidateTeacherQuestionDataCaches,
     readTeacherSubjectsCache,
   } from "$lib/cache/teacher-page-cache";
-  import type { TeacherSubjectsResponse } from "$lib/types/teacher";
+
+  import { createQuestionFormData } from "$lib/utils/question-form";
+
+  import type {
+    QuestionAnalyzePayload,
+    QuestionFormPayload,
+  } from "$lib/types/question-form";
+
+  import type {
+    TeacherAnalyzeQuestionResponse,
+    TeacherMutateQuestionResponse,
+    TeacherSubjectsResponse,
+  } from "$lib/types/teacher";
 
   const defaultSubjectId = $derived(
     page.url.searchParams.get("subjectId") ?? "",
@@ -14,17 +32,18 @@
 
   const cachedSubjects = readTeacherSubjectsCache();
 
-  let loading = $state(cachedSubjects === null);
-
-  let errorMessage = $state("");
-
   let subjects = $state<TeacherSubjectsResponse["subjects"]>(
     cachedSubjects ?? [],
   );
 
+  let loading = $state(cachedSubjects === null);
+
+  let errorMessage = $state("");
+
   async function loadSubjects() {
     if (subjects.length > 0) {
       loading = false;
+
       return;
     }
 
@@ -41,6 +60,36 @@
     }
   }
 
+  async function analyzeQuestion(payload: QuestionAnalyzePayload) {
+    const result = await apiFetch<TeacherAnalyzeQuestionResponse>(
+      "/teacher/questions/analyze",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+
+    return result.result;
+  }
+
+  async function createQuestion(payload: QuestionFormPayload) {
+    const formData = createQuestionFormData(payload, "create");
+
+    const result = await apiFetch<TeacherMutateQuestionResponse>(
+      "/teacher/questions",
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
+
+    invalidateTeacherQuestionDataCaches(result.question.id);
+
+    await goto(
+      `/teacher/questions?bank=${encodeURIComponent(payload.subjectId)}`,
+    );
+  }
+
   onMount(() => {
     void loadSubjects();
   });
@@ -54,14 +103,15 @@
   </div>
 {:else if loading}
   <div class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-    <div class="flex items-center gap-3">
-      <div
-        class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#0c438c]"
-      ></div>
-
-      <p class="text-sm font-semibold text-slate-500">Memuat bank soal...</p>
-    </div>
+    <p class="text-sm font-semibold text-slate-500">Memuat bank soal...</p>
   </div>
 {:else}
-  <TeacherQuestionForm mode="create" {subjects} {defaultSubjectId} />
+  <QuestionForm
+    mode="create"
+    {subjects}
+    {defaultSubjectId}
+    backHref="/teacher/questions"
+    onAnalyze={analyzeQuestion}
+    onSubmit={createQuestion}
+  />
 {/if}

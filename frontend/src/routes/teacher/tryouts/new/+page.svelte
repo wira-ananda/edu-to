@@ -1,12 +1,25 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import TeacherTryoutForm from "$lib/components/tryouts/TeacherTryoutForm.svelte";
+
+  import { apiFetch } from "$lib/api";
+
+  import TryoutForm from "$lib/components/tryouts/TryoutForm.svelte";
+
   import {
     getTeacherSubjectsCached,
+    invalidateTeacherTryoutsCache,
     readTeacherSubjectsCache,
   } from "$lib/cache/teacher-page-cache";
-  import type { TeacherSubjectsResponse } from "$lib/types/teacher";
+
+  import type { TryoutFormPayload } from "$lib/types/tryout-form";
+
+  import type {
+    TeacherCreateTryoutPayload,
+    TeacherMutateTryoutResponse,
+    TeacherSubjectsResponse,
+  } from "$lib/types/teacher";
 
   const defaultSubjectId = $derived(
     page.url.searchParams.get("subjectId") ?? "",
@@ -20,15 +33,19 @@
 
   let loading = $state(cachedSubjects === null);
 
+  let saving = $state(false);
+
   let errorMessage = $state("");
 
   async function loadSubjects() {
     if (subjects.length > 0) {
       loading = false;
+
       return;
     }
 
     loading = true;
+
     errorMessage = "";
 
     try {
@@ -41,12 +58,36 @@
     }
   }
 
+  async function createTryout(values: TryoutFormPayload) {
+    saving = true;
+
+    errorMessage = "";
+
+    try {
+      const payload: TeacherCreateTryoutPayload = values;
+
+      await apiFetch<TeacherMutateTryoutResponse>("/teacher/tryouts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      invalidateTeacherTryoutsCache();
+
+      await goto("/teacher/tryouts");
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Gagal membuat tryout.";
+    } finally {
+      saving = false;
+    }
+  }
+
   onMount(() => {
     void loadSubjects();
   });
 </script>
 
-{#if errorMessage}
+{#if errorMessage && loading}
   <div
     class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
   >
@@ -63,5 +104,16 @@
     </div>
   </div>
 {:else}
-  <TeacherTryoutForm mode="create" {subjects} {defaultSubjectId} />
+  <TryoutForm
+    mode="create"
+    {subjects}
+    {defaultSubjectId}
+    {saving}
+    {errorMessage}
+    backHref="/teacher/tryouts"
+    questionBankHref="/teacher/questions"
+    newQuestionHref="/teacher/questions/new"
+    description="Buat paket tryout dari salah satu bank soal milikmu."
+    onSubmit={createTryout}
+  />
 {/if}
