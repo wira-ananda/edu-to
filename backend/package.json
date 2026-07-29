@@ -8,7 +8,8 @@
     "prisma:generate": "bunx prisma generate",
     "prisma:migrate": "bunx prisma migrate dev",
     "prisma:deploy": "bunx prisma migrate deploy",
-    "seed": "bun run src/seed/seed.ts",
+    "db:reset": "bunx prisma db push --force-reset && bunx prisma generate && bun src/seed/seed-all.ts",
+    "db:seed": "bun src/seed/seed-all.ts",
     "seed:questions": "bun run src/seed/seed-questions.ts"
   },
   "dependencies": {

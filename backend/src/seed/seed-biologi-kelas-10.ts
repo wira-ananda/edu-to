@@ -1,5 +1,7 @@
 import "../lib/env.js";
 
+import { randomInt } from "node:crypto";
+
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "../lib/prisma.js";
@@ -11,6 +13,7 @@ import {
 
 import type {
   AnswerOption,
+  DifficultyLevel,
   TryoutStatus,
   WeightPriority,
 } from "../types/domain.js";
@@ -21,1224 +24,1036 @@ const SUBJECT_NAME = "Biologi Kelas 10";
 
 const TRYOUT_TITLE = "Tryout Biologi Kelas 10";
 
-const TRYOUT_TOTAL_QUESTIONS = 15;
-
-const TRYOUT_DURATION_MINUTES = 45;
-
+const TRYOUT_TOTAL_QUESTIONS = 10;
+const TRYOUT_DURATION_MINUTES = 60;
 const TRYOUT_MAX_ATTEMPTS = 3;
-
 const TRYOUT_STATUS: TryoutStatus = "OPEN";
 
-const RESET_EXISTING_DATA = true;
-
 const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
 const JOIN_CODE_LENGTH = 6;
-
 const MAX_JOIN_CODE_ATTEMPTS = 30;
 
-type QuestionSource = {
+type BaseQuestionSource = {
   text: string;
   correct: string;
   distractors: [string, string, string];
+};
+
+type QuestionSource = BaseQuestionSource & {
+  expectedDifficulty: DifficultyLevel;
   weightPriority: WeightPriority;
 };
 
 type RawQuestion = {
   questionText: string;
+
   optionA: string;
   optionB: string;
   optionC: string;
   optionD: string;
+
   correctAnswer: AnswerOption;
+
+  expectedDifficulty: DifficultyLevel;
+
   weightPriority: WeightPriority;
 };
 
 const answerOptions: AnswerOption[] = ["A", "B", "C", "D"];
 
-const biologySources: QuestionSource[] = [
-  // ============================================================
-  // VIRUS
-  // ============================================================
+const weightPriorityCycle: WeightPriority[] = [
+  "LOW",
+  "NORMAL",
+  "HIGH",
+  "VERY_HIGH",
+];
 
-  // 1 - LOW
+/**
+ * LOW
+ *
+ * Sesuai classifier:
+ * - kata seperti apa, fungsi, definisi, contoh, ciri-ciri
+ * - tidak menambah difficultyScore
+ *
+ * Total: 34
+ */
+const lowQuestions: BaseQuestionSource[] = [
   {
-    text: "Apa maksud virus sebagai parasit intraseluler obligat?",
-    correct: "Virus hanya dapat berkembang biak di dalam sel inang",
+    text: "Apa pengertian biologi?",
+    correct: "Ilmu yang mempelajari makhluk hidup dan kehidupannya",
     distractors: [
-      "Virus dapat hidup bebas tanpa sel inang",
-      "Virus hanya hidup pada benda mati",
-      "Virus dapat membuat makanan sendiri",
+      "Ilmu yang hanya mempelajari benda mati",
+      "Ilmu yang hanya mempelajari cuaca",
+      "Ilmu yang hanya mempelajari batuan",
     ],
-    weightPriority: "LOW",
   },
-
-  // 2 - MEDIUM
   {
-    text: "Jelaskan mengapa virus disebut aseluler.",
-    correct: "Virus tidak memiliki struktur sel yang lengkap",
+    text: "Apa objek utama yang dipelajari dalam biologi?",
+    correct: "Makhluk hidup dan interaksinya dengan lingkungan",
     distractors: [
-      "Virus tersusun dari banyak sel",
-      "Virus memiliki jaringan dan organ",
-      "Virus memiliki inti sel yang lengkap",
+      "Hanya benda langit",
+      "Hanya mineral di dalam tanah",
+      "Hanya perubahan cuaca",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 3 - HIGH
   {
-    text: "Analisis sifat virus yang dapat dikristalkan di luar sel tetapi berkembang biak di dalam sel hidup, lalu simpulkan sifat virus tersebut.",
-    correct:
-      "Virus memiliki ciri benda mati dan juga memiliki ciri makhluk hidup",
-    distractors: [
-      "Virus sama seperti bakteri",
-      "Virus hanya termasuk benda mati",
-      "Virus termasuk organisme bersel satu",
-    ],
-    weightPriority: "HIGH",
+    text: "Apa tingkat organisasi kehidupan yang tersusun atas sekumpulan sel sejenis?",
+    correct: "Jaringan",
+    distractors: ["Organ", "Populasi", "Ekosistem"],
   },
-
-  // 4 - LOW
+  {
+    text: "Apa fungsi metode ilmiah dalam penelitian biologi?",
+    correct: "Membantu memperoleh pengetahuan melalui langkah yang sistematis",
+    distractors: [
+      "Menggantikan seluruh proses pengamatan",
+      "Menghasilkan jawaban tanpa bukti",
+      "Menghilangkan kebutuhan terhadap data",
+    ],
+  },
+  {
+    text: "Apa ciri-ciri utama virus?",
+    correct: "Tidak tersusun atas sel dan memiliki materi genetik",
+    distractors: [
+      "Selalu memiliki inti sel",
+      "Selalu memiliki dinding sel",
+      "Mampu melakukan metabolisme sendiri secara lengkap",
+    ],
+  },
   {
     text: "Apa fungsi kapsid pada virus?",
     correct: "Melindungi materi genetik virus",
     distractors: [
-      "Menghasilkan energi bagi virus",
+      "Menghasilkan energi untuk virus",
       "Melakukan fotosintesis",
       "Membentuk jaringan tubuh",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 5 - MEDIUM
   {
-    text: "Bedakan virus DNA dan virus RNA berdasarkan materi genetiknya.",
-    correct: "Virus DNA memiliki DNA, sedangkan virus RNA memiliki RNA",
+    text: "Apa fungsi materi genetik pada virus?",
+    correct: "Menyimpan informasi genetik virus",
     distractors: [
-      "Virus DNA tidak memiliki materi genetik",
-      "Virus RNA selalu memiliki DNA dan RNA",
-      "Semua virus memiliki DNA dan RNA sekaligus",
+      "Menghasilkan makanan sendiri",
+      "Mengangkut oksigen",
+      "Menyerap mineral dari tanah",
     ],
-    weightPriority: "LOW",
   },
-
-  // 6 - HIGH
   {
-    text: "Analisis keadaan ketika sel bakteri pecah setelah banyak virus baru terbentuk, lalu simpulkan jenis daur virus yang terjadi.",
-    correct: "Daur litik",
-    distractors: ["Daur lisogenik", "Pembelahan biner", "Konjugasi"],
-    weightPriority: "NORMAL",
-  },
-
-  // 7 - LOW
-  {
-    text: "Apa fungsi serabut ekor pada bakteriofag?",
-    correct: "Membantu virus menempel pada sel inang",
-    distractors: [
-      "Menyimpan materi genetik",
-      "Membentuk kapsid",
-      "Menghasilkan antibodi",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 8 - MEDIUM
-  {
-    text: "Jelaskan apa yang terjadi pada tahap adsorpsi bakteriofag.",
-    correct: "Virus menempel pada permukaan sel inang",
-    distractors: [
-      "Virus keluar dari sel inang",
-      "Virus membentuk virus baru",
-      "Virus menghancurkan antibodi",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 9 - HIGH
-  {
-    text: "Analisis keadaan ketika DNA virus bergabung dengan DNA bakteri tanpa langsung merusak sel bakteri, lalu simpulkan nama bentuk DNA virus tersebut.",
-    correct: "Profage",
-    distractors: ["Kapsomer", "Antigen", "Klorofil"],
-    weightPriority: "LOW",
-  },
-
-  // 10 - LOW
-  {
-    text: "Apa virus yang menyebabkan penyakit demam berdarah?",
-    correct: "Dengue virus",
-    distractors: ["Tobacco Mosaic Virus", "Rhizobium", "Nitrobacter"],
-    weightPriority: "NORMAL",
-  },
-
-  // 11 - MEDIUM
-  {
-    text: "Jelaskan cara vaksin membantu tubuh melawan penyakit akibat virus.",
-    correct:
-      "Vaksin membantu tubuh membentuk kekebalan terhadap penyakit tertentu",
-    distractors: [
-      "Vaksin mengubah virus menjadi bakteri",
-      "Vaksin menggantikan semua sel darah putih",
-      "Vaksin menghentikan seluruh kerja sel tubuh",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 12 - HIGH
-  {
-    text: "Analisis penularan virus melalui percikan batuk atau bersin, lalu simpulkan cara yang tepat untuk mengurangi penularannya.",
-    correct:
-      "Menjaga kebersihan dan mengurangi kontak dengan percikan dari orang sakit",
-    distractors: [
-      "Berbagi alat makan dengan orang sakit",
-      "Tidak perlu mencuci tangan",
-      "Berkumpul di tempat yang penuh orang",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 13 - LOW
-  {
-    text: "Apa nama penyakit yang dapat dicegah dengan vaksin polio?",
-    correct: "Polio",
-    distractors: ["Malaria", "Tuberkulosis", "Tifus"],
-    weightPriority: "LOW",
-  },
-
-  // 14 - MEDIUM
-  {
-    text: "Tentukan penyakit yang disebabkan oleh Human Immunodeficiency Virus.",
-    correct: "AIDS",
-    distractors: ["Influenza", "Kolera", "Tetanus"],
-    weightPriority: "NORMAL",
-  },
-
-  // 15 - HIGH
-  {
-    text: "Analisis beberapa cara penularan HIV, lalu simpulkan kegiatan yang tidak dapat menularkan HIV.",
-    correct: "Berjabat tangan",
-    distractors: [
-      "Berbagi jarum suntik",
-      "Menerima darah yang terkontaminasi HIV",
-      "Penularan dari ibu kepada bayi",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 16 - LOW
-  {
-    text: "Apa virus yang menyerang tanaman tembakau?",
-    correct: "Tobacco Mosaic Virus",
-    distractors: ["Dengue virus", "Rabies virus", "Morbilli virus"],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 17 - MEDIUM
-  {
-    text: "Jelaskan dampak Tobacco Mosaic Virus pada tanaman tembakau.",
-    correct:
-      "Daun mengalami bercak seperti mosaik dan pertumbuhan tanaman terganggu",
-    distractors: [
-      "Tanaman menghasilkan buah lebih banyak",
-      "Akar tanaman berubah menjadi batang",
-      "Tanaman kehilangan semua DNA",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 18 - HIGH
-  {
-    text: "Analisis kasus seseorang yang digigit hewan terkena rabies, lalu simpulkan tindakan pencegahan yang dapat dilakukan.",
-    correct: "Mendapatkan vaksin antirabies",
-    distractors: [
-      "Memberikan pupuk nitrogen",
-      "Menggunakan antibiotik untuk semua virus",
-      "Mengurangi terkena sinar matahari",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 19 - LOW
-  {
-    text: "Apa pengertian antigen?",
-    correct: "Zat yang dapat memicu respons kekebalan tubuh",
-    distractors: [
-      "Zat yang selalu menghancurkan antibodi",
-      "Bagian tumbuhan untuk fotosintesis",
-      "Mineral yang membentuk tanah",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 20 - MEDIUM
-  {
-    text: "Jelaskan respons tubuh setelah vaksin berhasil bekerja.",
-    correct: "Tubuh membentuk antibodi dan sel memori",
-    distractors: [
-      "Tubuh kehilangan sistem kekebalan",
-      "Tubuh kehilangan semua sel darah",
-      "Tubuh langsung kebal terhadap semua penyakit",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 21 - HIGH
-  {
-    text: "Analisis proses pembuatan vaksin mulai dari memilih bagian virus sampai dilakukan uji klinis, lalu simpulkan tujuan akhirnya.",
-    correct:
-      "Menghasilkan vaksin yang aman dan dapat membantu tubuh membentuk kekebalan",
-    distractors: [
-      "Membuat bakteri baru untuk mengganti virus",
-      "Menghilangkan DNA manusia",
-      "Menghilangkan semua virus dari alam",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 22 - LOW
-  {
-    text: "Apa fungsi PCR dalam salah satu proses pembuatan vaksin?",
-    correct: "Memperbanyak gen target",
-    distractors: [
-      "Menghancurkan antibodi",
-      "Menghasilkan jaringan hewan",
-      "Mengubah virus menjadi jamur",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 23 - MEDIUM
-  {
-    text: "Jelaskan mengapa vaksin perlu diuji sebelum digunakan banyak orang.",
-    correct:
-      "Untuk memastikan keamanan dan melihat respons tubuh terhadap vaksin",
-    distractors: [
-      "Agar vaksin berubah menjadi antibiotik",
-      "Agar vaksin tidak perlu diperiksa",
-      "Agar satu vaksin dapat menyembuhkan semua penyakit",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 24 - HIGH
-  {
-    text: "Analisis penggunaan virus yang sudah dilemahkan dalam vaksin, lalu simpulkan mengapa virus tersebut dapat membantu mencegah penyakit.",
-    correct:
-      "Virus yang dilemahkan dapat membantu tubuh mengenali virus dan membentuk kekebalan",
-    distractors: [
-      "Virus yang dilemahkan berubah menjadi bakteri",
-      "Tubuh tidak memberikan respons terhadap vaksin",
-      "Vaksin bekerja dengan menghancurkan semua sel tubuh",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 25 - LOW
-  {
-    text: "Apa nama virus yang menyerang bakteri?",
+    text: "Apa contoh virus yang menyerang bakteri?",
     correct: "Bakteriofag",
-    distractors: ["Protozoa", "Rhizobium", "Jamur"],
-    weightPriority: "LOW",
+    distractors: ["Rhizobium", "Amoeba", "Saccharomyces"],
   },
-
-  // ============================================================
-  // KEANEKARAGAMAN HAYATI DAN KLASIFIKASI
-  // ============================================================
-
-  // 26 - MEDIUM
   {
-    text: "Bedakan keanekaragaman tingkat gen dan tingkat jenis.",
-    correct:
-      "Keanekaragaman gen terjadi dalam satu spesies, sedangkan keanekaragaman jenis terjadi antarspesies",
+    text: "Apa ciri-ciri utama bakteri?",
+    correct: "Bersifat prokariotik dan umumnya bersel satu",
     distractors: [
-      "Keduanya hanya terjadi pada benda mati",
-      "Keanekaragaman gen terjadi antar kingdom",
-      "Keanekaragaman jenis hanya terjadi pada satu individu",
+      "Selalu memiliki membran inti",
+      "Selalu tersusun atas banyak sel",
+      "Tidak memiliki materi genetik",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 27 - HIGH
   {
-    text: "Analisis beberapa jenis mangga yang masih termasuk satu spesies, lalu simpulkan tingkat keanekaragaman yang terjadi.",
-    correct: "Keanekaragaman tingkat gen",
+    text: "Apa cara reproduksi bakteri yang paling umum?",
+    correct: "Pembelahan biner",
+    distractors: ["Fragmentasi jaringan", "Penyerbukan", "Pembentukan biji"],
+  },
+  {
+    text: "Apa contoh bakteri yang membantu mengikat nitrogen?",
+    correct: "Rhizobium",
+    distractors: ["Plasmodium", "Amoeba", "Rhizopus"],
+  },
+  {
+    text: "Apa ciri-ciri Archaea?",
+    correct: "Prokariotik dan banyak ditemukan pada lingkungan ekstrem",
     distractors: [
-      "Keanekaragaman tingkat ekosistem",
-      "Keanekaragaman tingkat kingdom",
-      "Keanekaragaman tingkat bioma",
+      "Selalu bersifat multiseluler",
+      "Memiliki jaringan pembuluh",
+      "Selalu memiliki kloroplas",
     ],
-    weightPriority: "HIGH",
   },
-
-  // 28 - LOW
   {
-    text: "Apa pengertian keanekaragaman hayati?",
-    correct: "Beragamnya makhluk hidup yang ada di bumi",
+    text: "Apa ciri-ciri umum Protista?",
+    correct: "Eukariotik dan sebagian besar memiliki struktur tubuh sederhana",
     distractors: [
-      "Samanya semua makhluk hidup",
-      "Jumlah benda mati di suatu tempat",
-      "Perubahan cuaca setiap hari",
+      "Selalu prokariotik",
+      "Selalu memiliki jaringan sejati",
+      "Tidak memiliki materi genetik",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 29 - MEDIUM
   {
-    text: "Jelaskan penyebab adanya keanekaragaman hayati.",
-    correct: "Perbedaan gen dan pengaruh lingkungan",
+    text: "Apa contoh Protista yang bergerak menggunakan kaki semu?",
+    correct: "Amoeba",
+    distractors: ["Paramecium", "Euglena", "Spirogyra"],
+  },
+  {
+    text: "Apa contoh Protista yang bergerak menggunakan silia?",
+    correct: "Paramecium",
+    distractors: ["Amoeba", "Plasmodium", "Rhizopus"],
+  },
+  {
+    text: "Apa ciri-ciri utama jamur?",
+    correct: "Eukariotik dan memperoleh makanan secara heterotrof",
     distractors: [
-      "Hanya karena makanan",
-      "Hanya karena ukuran tubuh",
-      "Hanya karena warna tanah",
+      "Selalu berfotosintesis",
+      "Tidak memiliki membran sel",
+      "Selalu bersifat prokariotik",
     ],
-    weightPriority: "LOW",
   },
-
-  // 30 - HIGH
   {
-    text: "Analisis dua kelompok organisme yang memiliki banyak perbedaan dan tidak dapat menghasilkan keturunan yang subur, lalu simpulkan tingkat keanekaragamannya.",
-    correct: "Keanekaragaman tingkat jenis",
+    text: "Apa fungsi hifa pada jamur?",
+    correct: "Menyerap nutrisi dan membentuk tubuh jamur",
     distractors: [
-      "Keanekaragaman tingkat gen",
-      "Keanekaragaman tingkat molekul",
-      "Keanekaragaman tingkat organ",
+      "Menghasilkan klorofil",
+      "Mengangkut darah",
+      "Menghasilkan biji",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 31 - LOW
   {
-    text: "Apa contoh keanekaragaman tingkat gen?",
-    correct: "Berbagai varietas mangga",
+    text: "Apa pengertian miselium?",
+    correct: "Kumpulan hifa yang membentuk tubuh jamur",
     distractors: [
-      "Gurun dan hutan hujan tropis",
-      "Singa dan harimau",
-      "Laut dan sawah",
+      "Kumpulan akar tumbuhan",
+      "Kumpulan sel darah",
+      "Kumpulan kapsid virus",
     ],
-    weightPriority: "HIGH",
   },
-
-  // 32 - MEDIUM
   {
-    text: "Tentukan tingkat keanekaragaman pada hutan hujan, gurun, dan padang rumput.",
-    correct: "Keanekaragaman tingkat ekosistem",
+    text: "Apa pengertian lumut kerak?",
+    correct: "Simbiosis antara jamur dengan organisme fotosintetik",
     distractors: [
-      "Keanekaragaman tingkat gen",
-      "Keanekaragaman tingkat sel",
-      "Keanekaragaman tingkat jaringan",
+      "Simbiosis antara dua hewan",
+      "Koloni bakteri patogen",
+      "Jaringan pengangkut pada tumbuhan",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 33 - HIGH
   {
-    text: "Analisis penggunaan garis Wallace dan garis Weber di Indonesia, lalu simpulkan kegunaan kedua garis tersebut.",
-    correct: "Membagi wilayah persebaran fauna di Indonesia",
+    text: "Apa ciri-ciri utama Kingdom Plantae?",
+    correct: "Eukariotik, multiseluler, dan umumnya melakukan fotosintesis",
     distractors: [
-      "Membagi batas provinsi",
-      "Menentukan jenis tanah",
-      "Menentukan kadar garam laut",
+      "Prokariotik dan tidak memiliki membran sel",
+      "Selalu bersel satu",
+      "Tidak memiliki klorofil",
     ],
-    weightPriority: "LOW",
   },
-
-  // 34 - LOW
   {
-    text: "Apa daerah yang termasuk wilayah fauna Oriental di Indonesia?",
-    correct: "Sumatra, Jawa, Bali, dan Kalimantan",
+    text: "Apa contoh tumbuhan yang termasuk Bryophyta?",
+    correct: "Lumut",
+    distractors: ["Paku", "Pinus", "Mangga"],
+  },
+  {
+    text: "Apa ciri-ciri tumbuhan paku?",
+    correct: "Memiliki jaringan pembuluh dan berkembang biak dengan spora",
     distractors: [
-      "Papua dan Australia",
-      "Eropa dan Afrika",
-      "Amerika dan Antarktika",
+      "Tidak memiliki akar, batang, dan daun sejati",
+      "Menghasilkan biji tertutup",
+      "Tidak memiliki jaringan pengangkut",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 35 - MEDIUM
   {
-    text: "Jelaskan ciri fauna Indonesia bagian timur.",
-    correct: "Banyak hewan berkantung dan burung yang memiliki warna menarik",
+    text: "Apa ciri-ciri Gymnospermae?",
+    correct: "Memiliki biji yang tidak tertutup oleh buah",
     distractors: [
-      "Semua hewan berukuran sangat besar",
-      "Semua hewan hidup di air",
-      "Tidak ada mamalia",
+      "Tidak menghasilkan biji",
+      "Selalu berkembang biak dengan spora",
+      "Tidak memiliki jaringan pembuluh",
     ],
-    weightPriority: "HIGH",
   },
-
-  // 36 - HIGH
   {
-    text: "Analisis keadaan hewan yang kehilangan tempat hidup karena hutan berubah menjadi permukiman, lalu simpulkan ancaman yang terjadi.",
-    correct: "Hilangnya habitat asli",
+    text: "Apa ciri-ciri Angiospermae?",
+    correct: "Menghasilkan bunga dan biji yang terlindungi oleh buah",
     distractors: [
-      "Meningkatnya konservasi",
-      "Bertambahnya habitat alami",
-      "Bertambahnya jumlah spesies",
+      "Tidak menghasilkan biji",
+      "Tidak memiliki jaringan pembuluh",
+      "Hanya berkembang biak menggunakan spora",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 37 - LOW
   {
-    text: "Apa fungsi plasma nutfah?",
-    correct: "Menjadi sumber sifat genetik yang dapat diwariskan",
+    text: "Apa ciri-ciri utama Kingdom Animalia?",
+    correct: "Eukariotik, multiseluler, dan heterotrof",
     distractors: [
-      "Menghilangkan variasi gen",
-      "Menyamakan semua organisme",
-      "Menggantikan fungsi ekosistem",
+      "Prokariotik dan autotrof",
+      "Tidak memiliki membran sel",
+      "Selalu melakukan fotosintesis",
     ],
-    weightPriority: "LOW",
   },
-
-  // 38 - MEDIUM
   {
-    text: "Bedakan pelestarian in situ dan ex situ.",
-    correct:
-      "In situ dilakukan di habitat asli, sedangkan ex situ di luar habitat asli",
+    text: "Apa ciri-ciri Porifera?",
+    correct: "Tubuh memiliki banyak pori",
     distractors: [
-      "In situ hanya untuk tumbuhan",
-      "Keduanya hanya dilakukan di laboratorium",
-      "Keduanya tidak berhubungan dengan pelestarian",
+      "Tubuh memiliki tulang belakang",
+      "Tubuh selalu memiliki kaki berbuku-buku",
+      "Tubuh memiliki daun",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 39 - HIGH
   {
-    text: "Analisis habitat hewan yang terpisah karena pembangunan jalan, lalu simpulkan cara yang tepat untuk membantu menjaga hewan tersebut.",
-    correct: "Menjaga dan menghubungkan kembali habitat yang terpisah",
+    text: "Apa ciri-ciri Cnidaria?",
+    correct: "Memiliki sel penyengat",
     distractors: [
-      "Memperbanyak pembangunan di habitat",
-      "Menghilangkan tumbuhan di sekitar habitat",
-      "Meningkatkan perburuan",
+      "Memiliki bulu dan sayap",
+      "Memiliki akar sejati",
+      "Memiliki dinding sel dari kitin",
     ],
-    weightPriority: "HIGH",
   },
-
-  // 40 - LOW
   {
-    text: "Apa pengertian klasifikasi makhluk hidup?",
-    correct:
-      "Pengelompokan makhluk hidup berdasarkan persamaan dan perbedaan ciri",
+    text: "Apa ciri-ciri Mollusca?",
+    correct: "Umumnya memiliki tubuh lunak",
     distractors: [
-      "Menghitung semua organisme",
-      "Mengubah nama organisme dengan bebas",
-      "Mengukur cuaca",
+      "Tubuh selalu beruas dengan kaki berbuku",
+      "Tubuh selalu memiliki tulang belakang",
+      "Tubuh tersusun atas hifa",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 41 - MEDIUM
   {
-    text: "Jelaskan manfaat klasifikasi makhluk hidup.",
-    correct:
-      "Memudahkan kita mempelajari makhluk hidup dan mengetahui kekerabatannya",
+    text: "Apa ciri-ciri Arthropoda?",
+    correct: "Memiliki kaki berbuku-buku dan rangka luar",
     distractors: [
-      "Menghilangkan perbedaan organisme",
-      "Membuat organisme tidak memiliki nama",
-      "Mengurangi jumlah spesies",
+      "Tidak memiliki simetri tubuh",
+      "Memiliki akar dan daun",
+      "Tubuh tersusun atas miselium",
     ],
-    weightPriority: "LOW",
   },
-
-  // 42 - HIGH
-  {
-    text: "Analisis penggunaan bentuk tubuh, bagian dalam tubuh, dan ciri kimia dalam klasifikasi, lalu simpulkan manfaat memakai banyak ciri.",
-    correct: "Pengelompokan organisme menjadi lebih tepat",
-    distractors: [
-      "Semua organisme masuk satu kelompok",
-      "Ciri organisme tidak perlu diamati",
-      "Nama ilmiah tidak lagi diperlukan",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 43 - LOW
-  {
-    text: "Apa aturan penulisan kata pertama pada nama ilmiah?",
-    correct: "Menunjukkan genus dan diawali huruf kapital",
-    distractors: [
-      "Menunjukkan spesies dan diawali huruf kecil",
-      "Menunjukkan famili dan ditulis dengan angka",
-      "Menunjukkan kingdom dan terdiri dari tiga kata",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 44 - MEDIUM
-  {
-    text: "Tentukan penulisan nama ilmiah manusia yang benar.",
-    correct: "Homo sapiens",
-    distractors: ["homo Sapiens", "HOMO SAPIENS", "Homo Sapiens"],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 45 - HIGH
-  {
-    text: "Analisis dua organisme yang memiliki genus sama tetapi spesies berbeda, lalu simpulkan tingkat kekerabatannya.",
-    correct: "Keduanya memiliki kekerabatan yang cukup dekat",
-    distractors: [
-      "Keduanya tidak memiliki persamaan",
-      "Keduanya pasti satu spesies",
-      "Genus tidak berhubungan dengan kekerabatan",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 46 - LOW
-  {
-    text: "Apa pengertian kunci determinasi?",
-    correct: "Petunjuk untuk mengenali organisme berdasarkan ciri-cirinya",
-    distractors: ["Daftar nilai ujian", "Tabel cuaca", "Diagram aliran energi"],
-    weightPriority: "NORMAL",
-  },
-
-  // 47 - MEDIUM
-  {
-    text: "Jelaskan cara kerja kunci determinasi dikotom.",
-    correct: "Setiap tahap memberikan dua pilihan ciri yang berbeda",
-    distractors: [
-      "Setiap tahap hanya memiliki satu pilihan",
-      "Semua organisme harus memiliki ciri sama",
-      "Tidak perlu melihat ciri organisme",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 48 - HIGH
-  {
-    text: "Analisis hewan yang tidak bertulang belakang, memiliki sayap, dan mulut menggigit, lalu simpulkan hewan yang sesuai.",
-    correct: "Belalang",
-    distractors: ["Ikan", "Sapi", "Anjing"],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 49 - LOW
-  {
-    text: "Apa pengertian kladogram?",
-    correct: "Diagram yang menunjukkan hubungan kekerabatan organisme",
-    distractors: [
-      "Diagram curah hujan",
-      "Tabel jumlah penduduk",
-      "Grafik suhu tubuh",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 50 - MEDIUM
-  {
-    text: "Jelaskan kegunaan kladogram.",
-    correct: "Membantu melihat kedekatan kekerabatan antarorganisme",
-    distractors: [
-      "Hanya menunjukkan ukuran tubuh",
-      "Menghilangkan informasi ciri",
-      "Hanya digunakan untuk benda mati",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // ============================================================
-  // EKOSISTEM DAN INTERAKSINYA
-  // ============================================================
-
-  // 51 - HIGH
-  {
-    text: "Analisis perubahan suhu dan kelembapan di suatu tempat, lalu simpulkan pengaruhnya terhadap organisme yang hidup di sana.",
-    correct:
-      "Jenis dan jumlah organisme dapat berubah karena kebutuhan lingkungannya berbeda",
-    distractors: [
-      "Semua organisme tetap hidup dengan kondisi yang sama",
-      "Suhu tidak memengaruhi organisme",
-      "Kelembapan hanya memengaruhi batu",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 52 - LOW
   {
     text: "Apa pengertian ekosistem?",
-    correct: "Hubungan antara makhluk hidup dan lingkungannya",
+    correct: "Interaksi antara makhluk hidup dengan lingkungan",
     distractors: [
-      "Kumpulan satu jenis sel",
-      "Daftar nama organisme",
-      "Tempat tanpa makhluk hidup",
+      "Kumpulan organ dalam tubuh",
+      "Kumpulan sel sejenis",
+      "Satu organisme tanpa lingkungannya",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 53 - MEDIUM
   {
-    text: "Jelaskan peran produsen dalam ekosistem.",
-    correct:
-      "Produsen membuat makanan yang menjadi sumber energi bagi organisme lain",
+    text: "Apa fungsi produsen dalam ekosistem?",
+    correct: "Menghasilkan bahan organik sebagai sumber energi",
     distractors: [
-      "Produsen hanya menguraikan bangkai",
-      "Produsen selalu memakan konsumen",
-      "Produsen tidak berhubungan dengan sumber makanan",
+      "Menguraikan seluruh bahan organik",
+      "Memakan semua konsumen",
+      "Menghilangkan energi dari ekosistem",
     ],
-    weightPriority: "LOW",
   },
-
-  // 54 - HIGH
   {
-    text: "Analisis keadaan ketika jumlah tumbuhan dalam suatu ekosistem berkurang, lalu simpulkan dampaknya terhadap hewan pemakan tumbuhan.",
-    correct: "Makanan bagi hewan pemakan tumbuhan akan berkurang",
+    text: "Apa fungsi dekomposer dalam ekosistem?",
+    correct: "Menguraikan sisa makhluk hidup",
     distractors: [
-      "Jumlah hewan selalu bertambah",
-      "Hewan tidak membutuhkan tumbuhan",
-      "Tumbuhan hanya memengaruhi pengurai",
+      "Menghasilkan cahaya",
+      "Menjadi sumber energi utama matahari",
+      "Membentuk jaringan tumbuhan",
     ],
-    weightPriority: "NORMAL",
   },
-
-  // 55 - LOW
-  {
-    text: "Apa contoh komponen abiotik?",
-    correct: "Suhu",
-    distractors: ["Belalang", "Jamur", "Rumput"],
-    weightPriority: "HIGH",
-  },
-
-  // 56 - MEDIUM
-  {
-    text: "Bedakan dekomposer dan detritivor.",
-    correct:
-      "Dekomposer menguraikan sisa makhluk hidup, sedangkan detritivor memakan sisa makhluk hidup",
-    distractors: [
-      "Keduanya merupakan produsen",
-      "Detritivor membuat makanan sendiri",
-      "Dekomposer hanya memakan organisme hidup",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 57 - HIGH
-  {
-    text: "Analisis keadaan ekosistem tanpa organisme pengurai, lalu simpulkan akibat yang mungkin terjadi.",
-    correct:
-      "Sisa makhluk hidup akan menumpuk dan unsur hara sulit kembali ke lingkungan",
-    distractors: [
-      "Unsur hara terus bertambah tanpa batas",
-      "Tumbuhan tidak membutuhkan unsur hara",
-      "Sisa organisme langsung hilang",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 58 - LOW
-  {
-    text: "Apa pengertian niche atau relung?",
-    correct: "Peran suatu organisme di dalam ekosistem",
-    distractors: [
-      "Nama ilmiah organisme",
-      "Jumlah organisme di bumi",
-      "Ukuran tubuh organisme",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 59 - MEDIUM
-  {
-    text: "Jelaskan kompetisi interspesifik.",
-    correct: "Persaingan antara organisme dari spesies yang berbeda",
-    distractors: [
-      "Persaingan dalam satu individu",
-      "Interaksi yang selalu saling menguntungkan",
-      "Interaksi antara organisme dan benda mati",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 60 - HIGH
-  {
-    text: "Analisis pohon pinus yang menghambat pertumbuhan tanaman lain di sekitarnya, lalu simpulkan jenis interaksi yang terjadi.",
-    correct: "Amensalisme",
-    distractors: ["Mutualisme", "Komensalisme", "Netralisme"],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 61 - LOW
-  {
-    text: "Apa contoh hubungan mutualisme?",
-    correct: "Lebah dan bunga",
-    distractors: [
-      "Ular dan tikus",
-      "Tali putri dan tanaman inang",
-      "Pinus dan tanaman yang dihambatnya",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 62 - MEDIUM
-  {
-    text: "Jelaskan hubungan ikan remora dan paus.",
-    correct:
-      "Remora mendapat keuntungan, sedangkan paus tidak dirugikan atau diuntungkan",
-    distractors: [
-      "Keduanya saling dirugikan",
-      "Paus dimakan oleh remora",
-      "Remora tidak mendapat keuntungan",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 63 - HIGH
-  {
-    text: "Analisis keadaan ketika predator utama hilang dari suatu ekosistem, lalu simpulkan dampaknya terhadap jumlah mangsa.",
-    correct: "Jumlah mangsa dapat meningkat",
-    distractors: [
-      "Mangsa langsung punah",
-      "Mangsa tidak dipengaruhi predator",
-      "Produsen berhenti fotosintesis",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 64 - LOW
   {
     text: "Apa pengertian rantai makanan?",
-    correct: "Urutan makan dan dimakan yang menunjukkan perpindahan energi",
+    correct: "Urutan perpindahan energi melalui proses makan dan dimakan",
     distractors: [
-      "Urutan klasifikasi organisme",
-      "Daftar komponen abiotik",
-      "Urutan terbentuknya tanah",
+      "Urutan pembentukan organ tubuh",
+      "Urutan pembelahan bakteri",
+      "Urutan klasifikasi makhluk hidup",
     ],
-    weightPriority: "VERY_HIGH",
   },
-
-  // 65 - MEDIUM
   {
-    text: "Bedakan rantai makanan dan jaring-jaring makanan.",
-    correct:
-      "Jaring-jaring makanan terdiri dari beberapa rantai makanan yang saling berhubungan",
+    text: "Apa pengertian keanekaragaman hayati?",
+    correct: "Variasi makhluk hidup pada berbagai tingkat kehidupan",
     distractors: [
-      "Rantai makanan selalu lebih rumit",
-      "Jaring-jaring makanan tidak menunjukkan makan dan dimakan",
-      "Keduanya tidak berhubungan dengan energi",
+      "Kesamaan semua makhluk hidup",
+      "Jumlah benda mati dalam lingkungan",
+      "Perubahan cuaca dalam suatu wilayah",
     ],
-    weightPriority: "LOW",
-  },
-
-  // 66 - HIGH
-  {
-    text: "Analisis perpindahan energi dari tumbuhan ke beberapa tingkat konsumen, lalu simpulkan mengapa energi semakin berkurang.",
-    correct:
-      "Sebagian energi digunakan organisme untuk hidup dan sebagian hilang sebagai panas",
-    distractors: [
-      "Energi selalu bertambah",
-      "Semua energi disimpan",
-      "Konsumen dapat membuat energi baru",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 67 - LOW
-  {
-    text: "Apa pengertian piramida ekologi?",
-    correct: "Gambaran perbandingan tingkat trofik dalam ekosistem",
-    distractors: [
-      "Diagram klasifikasi kingdom",
-      "Grafik pembelahan bakteri",
-      "Peta wilayah kota",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 68 - MEDIUM
-  {
-    text: "Bedakan piramida jumlah, biomassa, dan energi.",
-    correct:
-      "Ketiganya membandingkan jumlah organisme, massa organisme, dan energi",
-    distractors: [
-      "Ketiganya hanya membandingkan suhu",
-      "Piramida energi menunjukkan jumlah gen",
-      "Piramida biomassa hanya untuk benda mati",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 69 - HIGH
-  {
-    text: "Analisis piramida energi dalam ekosistem, lalu simpulkan mengapa bentuknya tidak terbalik.",
-    correct: "Energi berkurang setiap berpindah ke tingkat trofik berikutnya",
-    distractors: [
-      "Energi semakin banyak di tingkat atas",
-      "Semua tingkat memiliki energi yang sama",
-      "Produsen memiliki energi paling sedikit",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 70 - LOW
-  {
-    text: "Apa pengertian produktivitas primer?",
-    correct: "Kemampuan produsen menghasilkan bahan organik",
-    distractors: [
-      "Kecepatan hewan memangsa tumbuhan",
-      "Jumlah semua hewan",
-      "Kecepatan terbentuknya batu",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 71 - MEDIUM
-  {
-    text: "Bedakan produktivitas primer kotor dan produktivitas primer bersih.",
-    correct:
-      "Produktivitas primer bersih adalah produktivitas primer kotor setelah dikurangi energi untuk respirasi",
-    distractors: [
-      "Produktivitas primer kotor selalu lebih kecil",
-      "Keduanya tidak berhubungan dengan tumbuhan",
-      "Produktivitas primer bersih hanya dimiliki hewan",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 72 - HIGH
-  {
-    text: "Analisis penggunaan bahan bakar fosil yang semakin banyak, lalu simpulkan dampaknya terhadap karbon dioksida di udara.",
-    correct: "Jumlah karbon dioksida di udara dapat meningkat",
-    distractors: [
-      "Karbon dioksida langsung hilang",
-      "Respirasi semua organisme berhenti",
-      "Karbon tidak berpindah di alam",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 73 - LOW
-  {
-    text: "Apa bentuk nitrogen yang dapat diserap tumbuhan dari tanah?",
-    correct: "Nitrat",
-    distractors: ["Protein hewani", "Karbon dioksida", "Glukosa"],
-    weightPriority: "LOW",
-  },
-
-  // 74 - MEDIUM
-  {
-    text: "Jelaskan perubahan amonia menjadi nitrit kemudian menjadi nitrat.",
-    correct: "Proses tersebut merupakan bagian dari nitrifikasi",
-    distractors: [
-      "Nitrat langsung berubah menjadi oksigen",
-      "Amonia hanya berubah menjadi karbon",
-      "Nitrit tidak terlibat dalam daur nitrogen",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 75 - HIGH
-  {
-    text: "Analisis daerah yang kehilangan banyak tumbuhan, lalu simpulkan pengaruhnya terhadap air yang masuk ke tanah dan air yang mengalir di permukaan.",
-    correct:
-      "Air yang masuk ke tanah berkurang dan aliran di permukaan dapat meningkat",
-    distractors: [
-      "Air yang masuk ke tanah selalu meningkat",
-      "Air di permukaan langsung berhenti",
-      "Tumbuhan tidak memengaruhi pergerakan air",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // ============================================================
-  // PERUBAHAN LINGKUNGAN
-  // ============================================================
-
-  // 76 - LOW
-  {
-    text: "Apa pengertian polutan?",
-    correct: "Bahan yang dapat menyebabkan pencemaran lingkungan",
-    distractors: [
-      "Semua zat yang bermanfaat",
-      "Semua organisme produsen",
-      "Bahan yang hanya ada di laboratorium",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 77 - MEDIUM
-  {
-    text: "Bedakan perubahan lingkungan karena faktor alami dan faktor manusia.",
-    correct:
-      "Faktor alami berasal dari kejadian alam, sedangkan faktor manusia berasal dari kegiatan manusia",
-    distractors: [
-      "Keduanya selalu berasal dari pabrik",
-      "Faktor alami hanya terjadi di kota",
-      "Faktor manusia tidak melibatkan manusia",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 78 - HIGH
-  {
-    text: "Analisis penebangan hutan dan pertambangan yang dilakukan berlebihan, lalu simpulkan dampaknya terhadap lingkungan.",
-    correct: "Habitat dapat rusak dan keseimbangan lingkungan dapat terganggu",
-    distractors: [
-      "Keanekaragaman selalu meningkat",
-      "Lingkungan selalu menjadi lebih baik",
-      "Kegiatan tersebut tidak memengaruhi organisme",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 79 - LOW
-  {
-    text: "Apa contoh polutan biologis?",
-    correct: "Bakteri Escherichia coli pada air tercemar",
-    distractors: ["Cahaya matahari", "Batu kerikil", "Oksigen di udara"],
-    weightPriority: "HIGH",
-  },
-
-  // 80 - MEDIUM
-  {
-    text: "Bedakan polutan fisik dan polutan kimia.",
-    correct:
-      "Polutan fisik berasal dari faktor fisik, sedangkan polutan kimia berupa zat kimia",
-    distractors: [
-      "Keduanya selalu berupa bakteri",
-      "Polutan kimia hanya berupa suara",
-      "Polutan fisik selalu berupa gas beracun",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 81 - HIGH
-  {
-    text: "Analisis masuknya banyak limbah organik dan zat hara ke perairan, lalu simpulkan penyebab terjadinya eutrofikasi.",
-    correct:
-      "Zat hara yang berlebihan membuat tumbuhan atau alga tumbuh terlalu banyak",
-    distractors: [
-      "Semua alga langsung hilang",
-      "Air kehilangan semua zat hara",
-      "Limbah tidak memengaruhi air",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 82 - LOW
-  {
-    text: "Apa pengertian pencemaran air?",
-    correct: "Masuknya bahan pencemar yang menurunkan kualitas air",
-    distractors: [
-      "Perubahan warna langit",
-      "Bertambahnya jumlah batu",
-      "Perubahan nama sungai",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 83 - MEDIUM
-  {
-    text: "Jelaskan mengapa plastik dan pestisida dapat mencemari tanah.",
-    correct:
-      "Plastik sulit terurai dan pestisida dapat masuk serta mencemari tanah",
-    distractors: [
-      "Plastik selalu menyuburkan tanah",
-      "Pestisida selalu berubah menjadi air",
-      "Keduanya langsung hilang dari lingkungan",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 84 - HIGH
-  {
-    text: "Analisis penggunaan kendaraan bermotor dan bahan yang menghasilkan CFC, lalu simpulkan dampaknya terhadap udara dan atmosfer.",
-    correct:
-      "Pencemaran udara dapat meningkat dan kondisi atmosfer dapat terganggu",
-    distractors: [
-      "Udara selalu semakin bersih",
-      "Semua nitrogen di udara hilang",
-      "Daur air langsung berhenti",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 85 - LOW
-  {
-    text: "Apa gas yang berperan besar dalam peningkatan efek rumah kaca?",
-    correct: "Karbon dioksida",
-    distractors: ["Helium", "Neon", "Argon"],
-    weightPriority: "LOW",
-  },
-
-  // 86 - MEDIUM
-  {
-    text: "Jelaskan bagaimana hujan asam dapat terbentuk.",
-    correct:
-      "Gas pencemar bereaksi dengan uap air di udara dan membentuk senyawa asam",
-    distractors: [
-      "Hujan asam hanya terbentuk dari oksigen",
-      "Hujan asam tidak berhubungan dengan udara",
-      "Gas sulfur berubah menjadi klorofil",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 87 - HIGH
-  {
-    text: "Analisis jumlah gas rumah kaca yang semakin meningkat, lalu simpulkan dampaknya terhadap suhu bumi.",
-    correct: "Lebih banyak panas tertahan sehingga suhu bumi dapat meningkat",
-    distractors: [
-      "Semua panas langsung keluar",
-      "Suhu bumi selalu turun",
-      "Gas rumah kaca tidak memengaruhi panas",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 88 - LOW
-  {
-    text: "Apa batas kebisingan yang disebut sebagai pencemaran suara dalam materi?",
-    correct: "85 dB",
-    distractors: ["20 dB", "40 dB", "200 dB"],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 89 - MEDIUM
-  {
-    text: "Bedakan kebisingan impulsif dan kebisingan kontinu.",
-    correct:
-      "Impulsif terjadi singkat, sedangkan kontinu berlangsung terus dalam waktu lama",
-    distractors: [
-      "Keduanya selalu berlangsung satu detik",
-      "Kebisingan kontinu tidak menghasilkan suara",
-      "Kebisingan impulsif hanya terjadi di air",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 90 - HIGH
-  {
-    text: "Analisis suara petasan, palu, kereta api, dan mesin pabrik, lalu simpulkan dasar pembagian jenis kebisingan tersebut.",
-    correct: "Jenis kebisingan dibedakan dari pola dan lama suara muncul",
-    distractors: [
-      "Dibedakan berdasarkan warna alat",
-      "Dibedakan berdasarkan jumlah tumbuhan",
-      "Semua suara masuk jenis yang sama",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 91 - LOW
-  {
-    text: "Apa fungsi penyaringan dalam pengolahan limbah cair?",
-    correct: "Memisahkan partikel besar dari air",
-    distractors: [
-      "Menghasilkan virus baru",
-      "Mengubah semua air menjadi gas",
-      "Menambah logam berat",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 92 - MEDIUM
-  {
-    text: "Jelaskan peran mikroorganisme dalam pengolahan limbah cair.",
-    correct: "Mikroorganisme membantu menguraikan bahan pencemar",
-    distractors: [
-      "Mikroorganisme menambah logam berat",
-      "Mikroorganisme menghentikan penguraian",
-      "Mikroorganisme selalu membuat limbah lebih berbahaya",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 93 - HIGH
-  {
-    text: "Analisis limbah cair yang mengandung logam berat, lalu simpulkan cara pengolahan yang sesuai.",
-    correct:
-      "Menggunakan pengolahan kimia untuk membantu memisahkan zat pencemar",
-    distractors: [
-      "Langsung membuang limbah ke sungai",
-      "Menambahkan sampah plastik",
-      "Menggunakan suara untuk membersihkan limbah",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 94 - LOW
-  {
-    text: "Apa contoh sampah organik yang dapat dibuat menjadi kompos?",
-    correct: "Sisa sayuran dan daun",
-    distractors: ["Baterai bekas", "Kaca", "Logam"],
-    weightPriority: "NORMAL",
-  },
-
-  // 95 - MEDIUM
-  {
-    text: "Jelaskan manfaat membuat kompos dari sampah organik.",
-    correct:
-      "Sampah organik dapat diubah menjadi bahan yang berguna untuk tanah",
-    distractors: [
-      "Kompos mengubah sampah menjadi logam",
-      "Kompos menghilangkan semua mikroorganisme",
-      "Kompos hanya dapat dibuat dari kaca",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 96 - HIGH
-  {
-    text: "Analisis sampah yang terdiri dari sisa makanan, plastik, dan bahan lain, lalu simpulkan mengapa sampah perlu dipisahkan sebelum diolah.",
-    correct: "Setiap jenis sampah memiliki cara pengolahan yang berbeda",
-    distractors: [
-      "Semua sampah harus diolah dengan cara yang sama",
-      "Jenis sampah tidak memengaruhi cara pengolahan",
-      "Semua sampah dapat dibuang ke sungai",
-    ],
-    weightPriority: "VERY_HIGH",
-  },
-
-  // 97 - LOW
-  {
-    text: "Apa pengertian daur ulang?",
-    correct: "Mengolah kembali bahan bekas agar dapat digunakan lagi",
-    distractors: [
-      "Membuang semua sampah ke lingkungan",
-      "Membakar semua sampah",
-      "Membuang sampah ke sungai",
-    ],
-    weightPriority: "LOW",
-  },
-
-  // 98 - MEDIUM
-  {
-    text: "Jelaskan cara mengurangi pencemaran dari bahan bakar fosil.",
-    correct:
-      "Mengurangi penggunaan bahan bakar fosil dan memakai pilihan yang lebih bersih",
-    distractors: [
-      "Meningkatkan penggunaan batu bara",
-      "Menambah jumlah kendaraan",
-      "Menggunakan lebih banyak bahan bakar berpolusi",
-    ],
-    weightPriority: "NORMAL",
-  },
-
-  // 99 - HIGH
-  {
-    text: "Analisis musim kering yang berlangsung semakin lama, lalu simpulkan dampaknya terhadap air dan makhluk hidup.",
-    correct:
-      "Persediaan air dapat berkurang dan makhluk hidup dapat mengalami kesulitan",
-    distractors: [
-      "Air selalu semakin banyak",
-      "Perubahan iklim tidak memengaruhi makhluk hidup",
-      "Semua lingkungan menjadi sama",
-    ],
-    weightPriority: "HIGH",
-  },
-
-  // 100 - LOW
-  {
-    text: "Apa tindakan sederhana yang dapat dilakukan sebelum mengolah sampah?",
-    correct: "Memisahkan sampah berdasarkan jenisnya",
-    distractors: [
-      "Mencampur semua sampah",
-      "Membuang sampah ke sungai",
-      "Membakar semua sampah di dalam ruangan",
-    ],
-    weightPriority: "VERY_HIGH",
   },
 ];
 
-function assertQuestionCount() {
+/**
+ * MEDIUM
+ *
+ * Menggunakan indikator:
+ * - jelaskan
+ * - mengapa
+ * - bedakan
+ * - hubungan
+ * - proses
+ * - tentukan
+ * - klasifikasikan
+ *
+ * Score umumnya 2-4.
+ *
+ * Total: 33
+ */
+const mediumQuestions: BaseQuestionSource[] = [
+  {
+    text: "Jelaskan alasan virus tidak digolongkan sebagai organisme bersel.",
+    correct:
+      "Virus tidak memiliki struktur sel seperti membran sel, sitoplasma, dan organel",
+    distractors: [
+      "Virus selalu memiliki banyak sel",
+      "Virus memiliki jaringan pembuluh",
+      "Virus memiliki inti sel lengkap",
+    ],
+  },
+  {
+    text: "Mengapa virus disebut parasit intraseluler obligat?",
+    correct:
+      "Virus hanya dapat memperbanyak diri dengan memanfaatkan sel inang",
+    distractors: [
+      "Virus dapat hidup bebas tanpa sel lain",
+      "Virus selalu menghasilkan makanan sendiri",
+      "Virus mampu membentuk jaringan tubuh",
+    ],
+  },
+  {
+    text: "Bedakan daur litik dan daur lisogenik pada reproduksi virus.",
+    correct:
+      "Daur litik segera menghancurkan sel inang, sedangkan lisogenik menyisipkan materi genetik terlebih dahulu",
+    distractors: [
+      "Keduanya selalu langsung menghancurkan sel",
+      "Daur lisogenik tidak melibatkan materi genetik",
+      "Daur litik hanya terjadi pada tumbuhan",
+    ],
+  },
+  {
+    text: "Jelaskan peran bakteri dalam pembuatan makanan fermentasi.",
+    correct: "Bakteri mengubah bahan tertentu menjadi produk hasil fermentasi",
+    distractors: [
+      "Bakteri menghentikan seluruh reaksi kimia",
+      "Bakteri menghasilkan cahaya untuk makanan",
+      "Bakteri mengubah semua zat menjadi oksigen",
+    ],
+  },
+  {
+    text: "Mengapa penggunaan antibiotik yang tidak tepat dapat meningkatkan resistensi bakteri?",
+    correct: "Bakteri yang tahan dapat bertahan dan berkembang biak",
+    distractors: [
+      "Antibiotik mengubah bakteri menjadi virus",
+      "Semua bakteri langsung kehilangan DNA",
+      "Antibiotik membuat bakteri berfotosintesis",
+    ],
+  },
+  {
+    text: "Klasifikasikan Protista berdasarkan cara memperoleh makanannya.",
+    correct:
+      "Protista dapat bersifat autotrof, heterotrof, atau memiliki kombinasi keduanya",
+    distractors: [
+      "Semua Protista hanya autotrof",
+      "Semua Protista hanya parasit",
+      "Semua Protista memiliki cara makan yang sama",
+    ],
+  },
+  {
+    text: "Jelaskan peran jamur sebagai dekomposer dalam lingkungan.",
+    correct:
+      "Jamur menguraikan sisa organisme menjadi senyawa yang lebih sederhana",
+    distractors: [
+      "Jamur menghasilkan seluruh energi matahari",
+      "Jamur menghentikan daur materi",
+      "Jamur selalu menjadi produsen",
+    ],
+  },
+  {
+    text: "Bandingkan lumut dan tumbuhan paku berdasarkan jaringan pengangkut.",
+    correct: "Paku memiliki jaringan pengangkut sejati sedangkan lumut tidak",
+    distractors: [
+      "Lumut memiliki pembuluh lebih lengkap daripada paku",
+      "Keduanya tidak memiliki jaringan pengangkut",
+      "Keduanya memiliki biji tertutup",
+    ],
+  },
+  {
+    text: "Bedakan Gymnospermae dan Angiospermae berdasarkan keadaan bijinya.",
+    correct:
+      "Gymnospermae memiliki biji terbuka sedangkan Angiospermae memiliki biji tertutup",
+    distractors: [
+      "Gymnospermae tidak memiliki biji",
+      "Angiospermae hanya menghasilkan spora",
+      "Keduanya tidak memiliki jaringan pembuluh",
+    ],
+  },
+  {
+    text: "Jelaskan peran bunga dalam reproduksi tumbuhan berbiji tertutup.",
+    correct:
+      "Bunga menjadi tempat organ reproduksi dan membantu terjadinya pembuahan",
+    distractors: [
+      "Bunga menggantikan fungsi akar",
+      "Bunga menjadi satu-satunya tempat respirasi",
+      "Bunga membentuk jaringan pembuluh",
+    ],
+  },
+  {
+    text: "Mengapa tumbuhan mangrove mampu hidup pada lingkungan berkadar garam tinggi?",
+    correct:
+      "Mangrove memiliki adaptasi yang membantu mengatur kadar garam dan air",
+    distractors: [
+      "Mangrove tidak membutuhkan air",
+      "Mangrove tidak memiliki membran sel",
+      "Mangrove selalu menyerap seluruh garam",
+    ],
+  },
+  {
+    text: "Jelaskan dasar pengelompokan hewan berdasarkan simetri tubuh.",
+    correct:
+      "Hewan dapat dikelompokkan berdasarkan pola pembagian bagian tubuhnya",
+    distractors: [
+      "Semua hewan memiliki simetri yang sama",
+      "Simetri hanya ditentukan warna tubuh",
+      "Simetri tidak berkaitan dengan susunan tubuh",
+    ],
+  },
+  {
+    text: "Klasifikasikan hewan vertebrata berdasarkan ciri penutup tubuhnya.",
+    correct:
+      "Kelompok vertebrata memiliki penutup tubuh yang berbeda seperti sisik, kulit, bulu, atau rambut",
+    distractors: [
+      "Semua vertebrata memiliki bulu",
+      "Semua vertebrata memiliki rangka luar",
+      "Penutup tubuh tidak dapat digunakan sebagai ciri",
+    ],
+  },
+  {
+    text: "Mengapa rangka luar menguntungkan bagi Arthropoda?",
+    correct: "Rangka luar melindungi tubuh dan menjadi tempat melekatnya otot",
+    distractors: [
+      "Rangka luar menghasilkan makanan",
+      "Rangka luar menggantikan sistem pencernaan",
+      "Rangka luar membuat hewan tidak perlu bergerak",
+    ],
+  },
+  {
+    text: "Jelaskan peran produsen dalam aliran energi suatu ekosistem.",
+    correct:
+      "Produsen mengubah energi menjadi bahan organik yang dapat digunakan organisme lain",
+    distractors: [
+      "Produsen hanya memperoleh energi dari konsumen",
+      "Produsen menghilangkan seluruh energi",
+      "Produsen tidak berhubungan dengan konsumen",
+    ],
+  },
+  {
+    text: "Mengapa jaring-jaring makanan lebih kompleks daripada rantai makanan?",
+    correct:
+      "Jaring-jaring makanan menunjukkan banyak hubungan makan antarorganisme",
+    distractors: [
+      "Jaring-jaring makanan hanya memiliki satu organisme",
+      "Rantai makanan selalu memiliki lebih banyak hubungan",
+      "Jaring-jaring makanan tidak menunjukkan aliran energi",
+    ],
+  },
+  {
+    text: "Mengapa energi berkurang pada tingkat trofik yang lebih tinggi?",
+    correct:
+      "Sebagian energi digunakan dalam aktivitas hidup dan dilepas sebagai panas",
+    distractors: [
+      "Energi selalu bertambah pada setiap tingkat",
+      "Semua energi berpindah tanpa kehilangan",
+      "Konsumen menghasilkan energi baru",
+    ],
+  },
+  {
+    text: "Jelaskan peran tumbuhan dalam siklus karbon.",
+    correct:
+      "Tumbuhan menyerap karbon dioksida untuk membentuk bahan organik melalui fotosintesis",
+    distractors: [
+      "Tumbuhan menghentikan seluruh siklus karbon",
+      "Tumbuhan tidak menyerap karbon",
+      "Tumbuhan mengubah karbon menjadi air saja",
+    ],
+  },
+  {
+    text: "Jelaskan peran bakteri pengikat nitrogen dalam ekosistem.",
+    correct:
+      "Bakteri membantu mengubah nitrogen menjadi bentuk yang dapat digunakan tumbuhan",
+    distractors: [
+      "Bakteri menghilangkan seluruh nitrogen",
+      "Bakteri mengubah nitrogen menjadi cahaya",
+      "Bakteri menghentikan pertumbuhan tumbuhan",
+    ],
+  },
+  {
+    text: "Jelaskan proses perpindahan air dalam siklus air.",
+    correct:
+      "Air berpindah melalui penguapan, kondensasi, presipitasi, dan aliran kembali",
+    distractors: [
+      "Air hanya berpindah melalui fotosintesis",
+      "Air tidak mengalami perubahan tempat",
+      "Air selalu tetap berada di laut",
+    ],
+  },
+  {
+    text: "Jelaskan hubungan mutualisme antara dua organisme.",
+    correct: "Kedua organisme memperoleh keuntungan dari interaksi tersebut",
+    distractors: [
+      "Kedua organisme selalu dirugikan",
+      "Satu organisme mati tanpa interaksi",
+      "Tidak ada organisme yang memperoleh manfaat",
+    ],
+  },
+  {
+    text: "Jelaskan akibat kompetisi terhadap organisme dalam suatu habitat.",
+    correct:
+      "Kompetisi dapat memengaruhi akses organisme terhadap sumber daya terbatas",
+    distractors: [
+      "Kompetisi selalu meningkatkan semua sumber daya",
+      "Kompetisi tidak memengaruhi populasi",
+      "Kompetisi hanya terjadi pada benda mati",
+    ],
+  },
+  {
+    text: "Mengapa jumlah populasi dapat meningkat ketika sumber daya melimpah?",
+    correct:
+      "Ketersediaan makanan dan ruang mendukung kelangsungan hidup dan reproduksi",
+    distractors: [
+      "Sumber daya melimpah selalu menghentikan reproduksi",
+      "Populasi tidak membutuhkan makanan",
+      "Pertumbuhan populasi tidak dipengaruhi lingkungan",
+    ],
+  },
+  {
+    text: "Tentukan komponen biotik pada suatu ekosistem sawah.",
+    correct: "Padi, serangga, burung, dan mikroorganisme",
+    distractors: [
+      "Air, tanah, cahaya, dan suhu",
+      "Batu, udara, air, dan mineral",
+      "Suhu, kelembapan, angin, dan cahaya",
+    ],
+  },
+  {
+    text: "Klasifikasikan konservasi berdasarkan tempat pelaksanaannya.",
+    correct: "Konservasi dapat dilakukan secara in situ maupun ex situ",
+    distractors: [
+      "Konservasi hanya dapat dilakukan di kebun binatang",
+      "Konservasi hanya dapat dilakukan di hutan",
+      "Konservasi tidak membutuhkan habitat",
+    ],
+  },
+  {
+    text: "Jelaskan manfaat keanekaragaman hayati bagi kehidupan manusia.",
+    correct:
+      "Keanekaragaman menyediakan sumber pangan, obat, bahan baku, dan jasa lingkungan",
+    distractors: [
+      "Keanekaragaman tidak memiliki manfaat",
+      "Keanekaragaman hanya menyebabkan persaingan",
+      "Keanekaragaman selalu mengurangi sumber daya",
+    ],
+  },
+  {
+    text: "Mengapa spesies endemik lebih rentan terhadap perubahan habitat?",
+    correct: "Sebaran spesies endemik terbatas pada wilayah tertentu",
+    distractors: [
+      "Spesies endemik hidup di seluruh dunia",
+      "Spesies endemik tidak membutuhkan habitat",
+      "Spesies endemik selalu berkembang biak sangat cepat",
+    ],
+  },
+  {
+    text: "Jelaskan akibat fragmentasi habitat terhadap populasi satwa.",
+    correct:
+      "Fragmentasi dapat memisahkan populasi dan membatasi pergerakan serta perkawinan",
+    distractors: [
+      "Fragmentasi selalu memperluas habitat",
+      "Fragmentasi menghilangkan seluruh kompetisi",
+      "Fragmentasi tidak memengaruhi satwa",
+    ],
+  },
+  {
+    text: "Jelaskan penyebab eutrofikasi pada suatu perairan.",
+    correct:
+      "Masuknya nutrien berlebih dapat memicu pertumbuhan alga secara berlebihan",
+    distractors: [
+      "Kekurangan seluruh nutrien",
+      "Tidak adanya organisme air",
+      "Berkurangnya cahaya matahari secara total",
+    ],
+  },
+  {
+    text: "Jelaskan proses terjadinya efek rumah kaca.",
+    correct:
+      "Gas tertentu menahan sebagian panas sehingga suhu atmosfer meningkat",
+    distractors: [
+      "Atmosfer melepaskan seluruh panas ke luar angkasa",
+      "Gas rumah kaca menghilangkan cahaya matahari",
+      "Efek rumah kaca hanya terjadi di dalam rumah",
+    ],
+  },
+  {
+    text: "Jelaskan akibat penumpukan zat pencemar pada rantai makanan.",
+    correct:
+      "Konsentrasi zat pencemar dapat meningkat pada organisme tingkat trofik lebih tinggi",
+    distractors: [
+      "Zat pencemar selalu hilang pada konsumen",
+      "Semua organisme memiliki kadar pencemar sama",
+      "Pencemar berubah menjadi nutrisi",
+    ],
+  },
+  {
+    text: "Bedakan suksesi primer dan suksesi sekunder.",
+    correct:
+      "Suksesi primer dimulai tanpa tanah sedangkan suksesi sekunder terjadi pada area yang masih memiliki tanah",
+    distractors: [
+      "Keduanya hanya terjadi di laut",
+      "Suksesi sekunder selalu dimulai tanpa tanah",
+      "Suksesi primer tidak melibatkan organisme",
+    ],
+  },
+  {
+    text: "Jelaskan hubungan piramida ekologi dengan tingkat trofik.",
+    correct:
+      "Piramida ekologi menggambarkan perbandingan jumlah, biomassa, atau energi antar tingkat trofik",
+    distractors: [
+      "Piramida ekologi hanya menunjukkan warna organisme",
+      "Piramida tidak berkaitan dengan tingkat trofik",
+      "Setiap tingkat selalu memiliki energi yang sama",
+    ],
+  },
+];
+
+/**
+ * HIGH
+ *
+ * Setiap soal sengaja menggunakan minimal dua indikator HOTS.
+ *
+ * Contoh:
+ * - analisis = +3
+ * - simpulkan = +3
+ * - prediksi = +3
+ * - evaluasi = +3
+ * - argumentasikan = +3
+ *
+ * Sehingga score >= 5.
+ *
+ * Total: 33
+ */
+const highQuestions: BaseQuestionSource[] = [
+  {
+    text: "Analisis perubahan materi genetik virus lalu simpulkan dampaknya terhadap kemampuan virus menginfeksi inang.",
+    correct:
+      "Perubahan materi genetik dapat mengubah sifat virus termasuk kemampuan mengenali atau menginfeksi sel inang",
+    distractors: [
+      "Perubahan genetik selalu membuat virus kehilangan materi genetik",
+      "Virus tidak memiliki materi genetik sehingga tidak dapat berubah",
+      "Perubahan genetik hanya mengubah ukuran sel inang",
+    ],
+  },
+  {
+    text: "Analisis kondisi virus yang memasukkan materi genetik ke sel inang lalu simpulkan jenis daur reproduksinya.",
+    correct: "Kondisi tersebut menunjukkan daur lisogenik",
+    distractors: [
+      "Kondisi tersebut selalu menunjukkan pembelahan biner",
+      "Kondisi tersebut menunjukkan fotosintesis",
+      "Kondisi tersebut menunjukkan fermentasi",
+    ],
+  },
+  {
+    text: "Analisis penggunaan antibiotik berulang pada populasi bakteri lalu simpulkan penyebab meningkatnya bakteri resisten.",
+    correct:
+      "Bakteri yang memiliki ketahanan lebih besar bertahan dan menghasilkan keturunan",
+    distractors: [
+      "Antibiotik mengubah semua bakteri menjadi virus",
+      "Semua bakteri memperoleh ketahanan yang sama secara langsung",
+      "Bakteri kehilangan seluruh materi genetik",
+    ],
+  },
+  {
+    text: "Analisis populasi bakteri yang mulai kekurangan nutrisi lalu prediksi perubahan laju pertumbuhannya.",
+    correct:
+      "Laju pertumbuhan akan melambat karena sumber daya menjadi terbatas",
+    distractors: [
+      "Pertumbuhan terus meningkat tanpa batas",
+      "Nutrisi tidak memengaruhi pertumbuhan bakteri",
+      "Semua bakteri langsung berubah menjadi spora tumbuhan",
+    ],
+  },
+  {
+    text: "Analisis ledakan alga di suatu danau lalu simpulkan pengaruhnya terhadap kadar oksigen terlarut.",
+    correct:
+      "Oksigen dapat menurun akibat peningkatan proses penguraian organisme",
+    distractors: [
+      "Oksigen selalu meningkat tanpa batas",
+      "Alga tidak memengaruhi organisme lain",
+      "Penguraian tidak membutuhkan oksigen",
+    ],
+  },
+  {
+    text: "Analisis pemutihan terumbu karang lalu prediksi dampaknya terhadap organisme yang bergantung pada karang.",
+    correct:
+      "Populasi organisme yang menggunakan karang sebagai habitat atau sumber makanan dapat menurun",
+    distractors: [
+      "Semua organisme laut akan meningkat",
+      "Pemutihan karang selalu menambah habitat",
+      "Karang tidak berhubungan dengan organisme lain",
+    ],
+  },
+  {
+    text: "Analisis deforestasi pada daerah hulu lalu simpulkan pengaruhnya terhadap aliran air permukaan.",
+    correct:
+      "Aliran permukaan dapat meningkat karena berkurangnya vegetasi yang menyerap dan menahan air",
+    distractors: [
+      "Aliran permukaan selalu berhenti",
+      "Deforestasi menambah jumlah akar",
+      "Vegetasi tidak berperan dalam pergerakan air",
+    ],
+  },
+  {
+    text: "Analisis masuknya spesies invasif ke habitat baru lalu prediksi dampaknya terhadap spesies lokal.",
+    correct:
+      "Spesies lokal dapat tertekan akibat kompetisi, predasi, atau perubahan habitat",
+    distractors: [
+      "Spesies invasif selalu membantu semua spesies lokal",
+      "Tidak akan terjadi interaksi antarpopulasi",
+      "Semua spesies lokal otomatis menjadi produsen",
+    ],
+  },
+  {
+    text: "Analisis penggunaan pestisida berlebihan lalu simpulkan dampaknya terhadap organisme non-target.",
+    correct:
+      "Organisme non-target dapat ikut terdampak sehingga keseimbangan ekosistem terganggu",
+    distractors: [
+      "Pestisida hanya memengaruhi satu organisme sasaran",
+      "Semua organisme non-target menjadi kebal secara langsung",
+      "Pestisida selalu meningkatkan keanekaragaman",
+    ],
+  },
+  {
+    text: "Analisis hilangnya predator puncak dari jaring-jaring makanan lalu prediksi perubahan populasi mangsa.",
+    correct:
+      "Populasi mangsa berpotensi meningkat karena tekanan predasi menurun",
+    distractors: [
+      "Populasi mangsa pasti langsung punah",
+      "Mangsa tidak dipengaruhi predator",
+      "Predator puncak menghasilkan makanan bagi mangsa",
+    ],
+  },
+  {
+    text: "Analisis penurunan jumlah produsen lalu simpulkan dampaknya terhadap konsumen pada tingkat trofik berikutnya.",
+    correct: "Energi dan sumber makanan bagi konsumen akan berkurang",
+    distractors: [
+      "Energi konsumen selalu meningkat",
+      "Produsen tidak berperan dalam aliran energi",
+      "Konsumen dapat menghasilkan seluruh energinya sendiri",
+    ],
+  },
+  {
+    text: "Analisis perpindahan energi dalam piramida makanan lalu simpulkan alasan jumlah energi semakin kecil pada tingkat atas.",
+    correct:
+      "Sebagian besar energi digunakan untuk aktivitas hidup dan hilang sebagai panas",
+    distractors: [
+      "Energi diciptakan kembali pada setiap tingkat",
+      "Seluruh energi berpindah tanpa kehilangan",
+      "Organisme tingkat atas menghasilkan energi dari udara",
+    ],
+  },
+  {
+    text: "Analisis peningkatan karbon dioksida atmosfer lalu prediksi pengaruhnya terhadap suhu bumi.",
+    correct:
+      "Peningkatan karbon dioksida dapat memperkuat efek rumah kaca dan meningkatkan suhu rata-rata",
+    distractors: [
+      "Karbon dioksida selalu menurunkan suhu bumi",
+      "Karbon dioksida tidak berinteraksi dengan panas",
+      "Suhu bumi hanya dipengaruhi oleh organisme",
+    ],
+  },
+  {
+    text: "Analisis limpasan pupuk ke perairan lalu simpulkan penyebab terjadinya eutrofikasi.",
+    correct: "Nutrien berlebih mendorong pertumbuhan alga secara berlebihan",
+    distractors: [
+      "Pupuk menghilangkan seluruh nutrien",
+      "Alga tidak menggunakan nutrien",
+      "Eutrofikasi terjadi akibat kekurangan air",
+    ],
+  },
+  {
+    text: "Analisis kerusakan hutan mangrove lalu prediksi dampaknya terhadap perlindungan wilayah pesisir.",
+    correct: "Kemampuan pesisir menahan gelombang dan erosi dapat berkurang",
+    distractors: [
+      "Kerusakan mangrove selalu menghentikan gelombang",
+      "Mangrove tidak memiliki hubungan dengan pesisir",
+      "Erosi selalu menurun setelah mangrove hilang",
+    ],
+  },
+  {
+    text: "Analisis terbentuknya habitat baru pada permukaan lava lalu simpulkan jenis suksesi yang terjadi.",
+    correct: "Suksesi primer",
+    distractors: [
+      "Suksesi sekunder",
+      "Kompetisi intraspesifik",
+      "Simbiosis parasitisme",
+    ],
+  },
+  {
+    text: "Analisis pemulihan vegetasi setelah kebakaran yang masih menyisakan tanah lalu simpulkan jenis suksesinya.",
+    correct: "Suksesi sekunder",
+    distractors: ["Suksesi primer", "Pembelahan biner", "Daur litik"],
+  },
+  {
+    text: "Analisis ancaman terhadap spesies endemik lalu argumentasikan strategi konservasi yang paling sesuai.",
+    correct:
+      "Melindungi habitat alami dan mengurangi penyebab utama penurunan populasi",
+    distractors: [
+      "Menghilangkan seluruh habitat alami",
+      "Membiarkan eksploitasi tanpa pembatasan",
+      "Memindahkan seluruh spesies tanpa kajian",
+    ],
+  },
+  {
+    text: "Analisis program penangkaran satwa lalu evaluasi keterbatasannya sebagai strategi konservasi.",
+    correct:
+      "Penangkaran membantu populasi tetapi tetap memerlukan perlindungan habitat dan keragaman genetik",
+    distractors: [
+      "Penangkaran membuat habitat alami tidak diperlukan",
+      "Penangkaran selalu menjamin seluruh spesies bertahan",
+      "Keragaman genetik tidak penting dalam penangkaran",
+    ],
+  },
+  {
+    text: "Analisis beberapa ciri organisme lalu simpulkan alasan klasifikasi diperlukan dalam biologi.",
+    correct:
+      "Klasifikasi membantu mengelompokkan organisme berdasarkan persamaan dan perbedaan cirinya",
+    distractors: [
+      "Klasifikasi membuat semua organisme dianggap sama",
+      "Klasifikasi menghilangkan hubungan antarorganisme",
+      "Klasifikasi hanya digunakan untuk menentukan warna",
+    ],
+  },
+  {
+    text: "Analisis organisme eukariotik bersel satu yang bergerak aktif lalu simpulkan kelompok yang paling mungkin.",
+    correct: "Protista",
+    distractors: ["Archaea", "Bakteri", "Plantae"],
+  },
+  {
+    text: "Analisis organisme heterotrof berdinding sel kitin lalu simpulkan kingdom yang paling sesuai.",
+    correct: "Fungi",
+    distractors: ["Plantae", "Animalia", "Monera"],
+  },
+  {
+    text: "Analisis tumbuhan yang memiliki pembuluh tetapi berkembang biak dengan spora lalu simpulkan kelompoknya.",
+    correct: "Pteridophyta",
+    distractors: ["Bryophyta", "Gymnospermae", "Angiospermae"],
+  },
+  {
+    text: "Analisis tumbuhan yang menghasilkan biji terbuka pada strobilus lalu simpulkan kelompoknya.",
+    correct: "Gymnospermae",
+    distractors: ["Bryophyta", "Pteridophyta", "Angiospermae"],
+  },
+  {
+    text: "Analisis hewan bersimetri radial dengan sel penyengat lalu simpulkan filum yang paling sesuai.",
+    correct: "Cnidaria",
+    distractors: ["Porifera", "Mollusca", "Arthropoda"],
+  },
+  {
+    text: "Analisis hewan yang memiliki rangka luar dan kaki berbuku-buku lalu simpulkan filumnya.",
+    correct: "Arthropoda",
+    distractors: ["Mollusca", "Cnidaria", "Porifera"],
+  },
+  {
+    text: "Analisis perubahan kondisi air yang menyebabkan ikan sering muncul ke permukaan lalu simpulkan kemungkinan masalah lingkungannya.",
+    correct:
+      "Kadar oksigen terlarut kemungkinan menurun sehingga ikan kesulitan memperoleh oksigen",
+    distractors: [
+      "Air memiliki terlalu banyak oksigen",
+      "Ikan tidak membutuhkan oksigen",
+      "Semua organisme air berhenti melakukan respirasi",
+    ],
+  },
+  {
+    text: "Analisis berkurangnya organisme indikator yang sensitif terhadap pencemaran lalu simpulkan kondisi kualitas lingkungan.",
+    correct:
+      "Kualitas lingkungan kemungkinan menurun akibat adanya tekanan atau pencemaran",
+    distractors: [
+      "Lingkungan pasti semakin sehat",
+      "Organisme indikator tidak berkaitan dengan lingkungan",
+      "Pencemaran selalu meningkatkan organisme sensitif",
+    ],
+  },
+  {
+    text: "Analisis populasi yang mendekati daya dukung lingkungan lalu prediksi perubahan laju pertumbuhannya.",
+    correct:
+      "Laju pertumbuhan cenderung melambat karena sumber daya semakin terbatas",
+    distractors: [
+      "Laju pertumbuhan terus meningkat tanpa batas",
+      "Daya dukung tidak memengaruhi populasi",
+      "Populasi tidak membutuhkan sumber daya",
+    ],
+  },
+  {
+    text: "Analisis gangguan pada hubungan mutualisme lalu prediksi dampaknya terhadap kedua organisme.",
+    correct:
+      "Keduanya dapat mengalami penurunan keuntungan atau keberhasilan hidup",
+    distractors: [
+      "Keduanya selalu memperoleh manfaat lebih besar",
+      "Mutualisme tidak memberi manfaat",
+      "Gangguan tidak pernah memengaruhi organisme",
+    ],
+  },
+  {
+    text: "Analisis pembuangan sampah organik dalam jumlah besar ke sungai lalu simpulkan dampaknya terhadap kualitas air.",
+    correct:
+      "Penguraian bahan organik dapat meningkatkan kebutuhan oksigen dan menurunkan kualitas air",
+    distractors: [
+      "Sampah organik selalu meningkatkan oksigen",
+      "Penguraian tidak melibatkan mikroorganisme",
+      "Kualitas air tidak dipengaruhi limbah",
+    ],
+  },
+  {
+    text: "Analisis beberapa strategi pengelolaan sampah lalu evaluasi pendekatan yang paling mendukung keberlanjutan.",
+    correct:
+      "Mengurangi sampah dari sumber, menggunakan kembali, dan mendaur ulang lebih baik daripada hanya membuang",
+    distractors: [
+      "Membuang semua sampah ke sungai",
+      "Membakar seluruh sampah tanpa pengendalian",
+      "Mencampur seluruh limbah tanpa pemilahan",
+    ],
+  },
+  {
+    text: "Analisis kerusakan habitat yang terjadi terus-menerus lalu prediksi pengaruhnya terhadap keanekaragaman hayati.",
+    correct:
+      "Keanekaragaman dapat menurun karena organisme kehilangan tempat hidup dan sumber daya",
+    distractors: [
+      "Keanekaragaman selalu meningkat",
+      "Habitat tidak dibutuhkan organisme",
+      "Kerusakan habitat hanya memengaruhi benda mati",
+    ],
+  },
+];
+
+function assignWrsPriorities(
+  questions: BaseQuestionSource[],
+  expectedDifficulty: DifficultyLevel,
+  startIndex: number,
+): QuestionSource[] {
+  return questions.map((question, index) => {
+    const globalIndex = startIndex + index;
+
+    const weightPriority =
+      weightPriorityCycle[globalIndex % weightPriorityCycle.length] ?? "NORMAL";
+
+    return {
+      ...question,
+      expectedDifficulty,
+      weightPriority,
+    };
+  });
+}
+
+const biologySources: QuestionSource[] = [
+  ...assignWrsPriorities(lowQuestions, "LOW", 0),
+
+  ...assignWrsPriorities(mediumQuestions, "MEDIUM", lowQuestions.length),
+
+  ...assignWrsPriorities(
+    highQuestions,
+    "HIGH",
+    lowQuestions.length + mediumQuestions.length,
+  ),
+];
+
+function assertQuestionCounts() {
+  if (lowQuestions.length !== 34) {
+    throw new Error(`Soal LOW harus 34, sekarang ${lowQuestions.length}.`);
+  }
+
+  if (mediumQuestions.length !== 33) {
+    throw new Error(
+      `Soal MEDIUM harus 33, sekarang ${mediumQuestions.length}.`,
+    );
+  }
+
+  if (highQuestions.length !== 33) {
+    throw new Error(`Soal HIGH harus 33, sekarang ${highQuestions.length}.`);
+  }
+
   if (biologySources.length !== 100) {
     throw new Error(
       `Total soal Biologi Kelas 10 harus 100, sekarang ${biologySources.length}.`,
@@ -1248,21 +1063,6 @@ function assertQuestionCount() {
 
 function buildQuestions(sources: QuestionSource[]) {
   return sources.map((source, index): RawQuestion => {
-    /*
-     * Distribusi kunci:
-     *
-     * 1 -> A
-     * 2 -> B
-     * 3 -> C
-     * 4 -> D
-     *
-     * Diulang sampai soal 100.
-     *
-     * A = 25
-     * B = 25
-     * C = 25
-     * D = 25
-     */
     const correctIndex = index % answerOptions.length;
 
     const choices = [...source.distractors];
@@ -1286,9 +1086,129 @@ function buildQuestions(sources: QuestionSource[]) {
 
       correctAnswer: answerOptions[correctIndex] ?? "A",
 
+      expectedDifficulty: source.expectedDifficulty,
+
       weightPriority: source.weightPriority,
     };
   });
+}
+
+function generateJoinCodeCandidate() {
+  let code = "";
+
+  for (let index = 0; index < JOIN_CODE_LENGTH; index += 1) {
+    const randomIndex = randomInt(0, JOIN_CODE_ALPHABET.length);
+
+    code += JOIN_CODE_ALPHABET[randomIndex];
+  }
+
+  return code;
+}
+
+async function generateUniqueJoinCode() {
+  for (let attempt = 0; attempt < MAX_JOIN_CODE_ATTEMPTS; attempt += 1) {
+    const joinCode = generateJoinCodeCandidate();
+
+    const existingTryout = await prisma.tryout.findUnique({
+      where: {
+        joinCode,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingTryout) {
+      return joinCode;
+    }
+  }
+
+  throw new Error("Gagal membuat join code unik untuk tryout.");
+}
+
+async function getTeacher() {
+  const teacher = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: TEACHER_EMAIL,
+        mode: "insensitive",
+      },
+    },
+  });
+
+  if (!teacher) {
+    throw new Error(
+      `Akun guru ${TEACHER_EMAIL} tidak ditemukan. Jalankan seed akun terlebih dahulu.`,
+    );
+  }
+
+  if (teacher.role !== "TEACHER") {
+    throw new Error(
+      `${teacher.email} ditemukan tetapi role-nya bukan TEACHER.`,
+    );
+  }
+
+  return teacher;
+}
+
+async function findOrCreateSubject(teacherId: string) {
+  const existingSubject = await prisma.subject.findFirst({
+    where: {
+      ownerId: teacherId,
+      name: SUBJECT_NAME,
+    },
+  });
+
+  if (existingSubject) {
+    return existingSubject;
+  }
+
+  return prisma.subject.create({
+    data: {
+      ownerId: teacherId,
+      name: SUBJECT_NAME,
+    },
+  });
+}
+
+function validateDifficultyClassification(questions: RawQuestion[]) {
+  const counts: Record<DifficultyLevel, number> = {
+    LOW: 0,
+    MEDIUM: 0,
+    HIGH: 0,
+  };
+
+  questions.forEach((question, index) => {
+    const difficulty = classifyQuestionDifficulty({
+      questionText: question.questionText,
+      imageAltText: null,
+      hasImage: false,
+    });
+
+    if (difficulty.difficultyLevel !== question.expectedDifficulty) {
+      throw new Error(
+        [
+          `Difficulty soal ${index + 1} tidak sesuai.`,
+          `Question: ${question.questionText}`,
+          `Expected: ${question.expectedDifficulty}`,
+          `Actual: ${difficulty.difficultyLevel}`,
+          `Score: ${difficulty.difficultyScore}`,
+          `Indicators: ${difficulty.detectedIndicators.join(", ")}`,
+        ].join("\n"),
+      );
+    }
+
+    counts[difficulty.difficultyLevel] += 1;
+  });
+
+  if (counts.LOW !== 34 || counts.MEDIUM !== 33 || counts.HIGH !== 33) {
+    throw new Error(
+      `Distribusi difficulty salah. LOW=${counts.LOW}, MEDIUM=${counts.MEDIUM}, HIGH=${counts.HIGH}`,
+    );
+  }
+
+  return counts;
 }
 
 function validatePriorityDistribution(questions: RawQuestion[]) {
@@ -1311,7 +1231,7 @@ function validatePriorityDistribution(questions: RawQuestion[]) {
   ) {
     throw new Error(
       [
-        "Distribusi WRS priority tidak sesuai.",
+        "Distribusi WRS priority tidak rata.",
         `LOW=${counts.LOW}`,
         `NORMAL=${counts.NORMAL}`,
         `HIGH=${counts.HIGH}`,
@@ -1343,7 +1263,7 @@ function validateAnswerDistribution(questions: RawQuestion[]) {
   ) {
     throw new Error(
       [
-        "Distribusi jawaban benar tidak sesuai.",
+        "Distribusi jawaban benar tidak rata.",
         `A=${counts.A}`,
         `B=${counts.B}`,
         `C=${counts.C}`,
@@ -1355,244 +1275,76 @@ function validateAnswerDistribution(questions: RawQuestion[]) {
   return counts;
 }
 
-function getWrsPriorityProbability() {
-  const priorities: WeightPriority[] = ["LOW", "NORMAL", "HIGH", "VERY_HIGH"];
-
-  const prioritiesWithWeight = priorities.map((priority) => ({
-    priority,
-
-    weight: getWeightFromPriority(priority),
-  }));
-
-  const totalWeight = prioritiesWithWeight.reduce((total, item) => {
-    return total + item.weight;
-  }, 0);
-
-  return prioritiesWithWeight.map((item) => ({
-    priority: item.priority,
-
-    weight: item.weight,
-
-    baseProbability: `${((item.weight / totalWeight) * 100).toFixed(2)}%`,
-  }));
-}
-
-function generateJoinCodeCandidate() {
-  let code = "";
-
-  for (let index = 0; index < JOIN_CODE_LENGTH; index += 1) {
-    const randomIndex = Math.floor(Math.random() * JOIN_CODE_ALPHABET.length);
-
-    code += JOIN_CODE_ALPHABET[randomIndex];
-  }
-
-  return code;
-}
-
-async function generateUniqueJoinCode() {
-  for (let attempt = 0; attempt < MAX_JOIN_CODE_ATTEMPTS; attempt += 1) {
-    const joinCode = generateJoinCodeCandidate();
-
-    const existingTryout = await prisma.tryout.findUnique({
-      where: {
-        joinCode,
-      },
-
-      select: {
-        id: true,
-      },
-    });
-
-    if (!existingTryout) {
-      return joinCode;
-    }
-  }
-
-  throw new Error("Gagal membuat join code unik.");
-}
-
-async function getTeacher() {
-  const teacher = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: TEACHER_EMAIL,
-
-        mode: "insensitive",
-      },
-    },
-  });
-
-  if (!teacher) {
-    throw new Error(
-      `Akun guru ${TEACHER_EMAIL} tidak ditemukan. Jalankan seed akun terlebih dahulu.`,
-    );
-  }
-
-  if (teacher.role !== "TEACHER") {
-    throw new Error(
-      `${teacher.email} ditemukan tetapi role-nya bukan TEACHER.`,
-    );
-  }
-
-  return teacher;
-}
-
-async function findOrCreateSubject(teacherId: string) {
-  const existingSubject = await prisma.subject.findFirst({
-    where: {
-      ownerId: teacherId,
-
-      name: SUBJECT_NAME,
-    },
-  });
-
-  if (existingSubject) {
-    return existingSubject;
-  }
-
-  return prisma.subject.create({
-    data: {
-      ownerId: teacherId,
-
-      name: SUBJECT_NAME,
-    },
-  });
-}
-
 async function cleanupExistingData(teacherId: string, subjectId: string) {
-  if (!RESET_EXISTING_DATA) {
-    return;
-  }
-
-  console.log("");
-
   console.log("Resetting old Biologi Kelas 10 data...");
 
   const existingTryouts = await prisma.tryout.findMany({
     where: {
       ownerId: teacherId,
-
       subjectId,
-
       title: TRYOUT_TITLE,
     },
 
     select: {
       id: true,
-
       title: true,
-
-      _count: {
-        select: {
-          sessions: true,
-
-          enrollments: true,
-        },
-      },
     },
   });
 
   for (const tryout of existingTryouts) {
     console.log(`Deleting old tryout: ${tryout.title}`);
 
-    console.log(`Sessions: ${tryout._count.sessions}`);
-
-    console.log(`Enrollments: ${tryout._count.enrollments}`);
-
-    await prisma.tryoutEnrollment.deleteMany({
+    /*
+     * Session, answer, enrollment, dan data turunan
+     * seharusnya terhapus melalui onDelete: Cascade.
+     */
+    await prisma.tryout.delete({
       where: {
-        tryoutId: tryout.id,
+        id: tryout.id,
       },
     });
-
-    try {
-      await prisma.tryout.delete({
-        where: {
-          id: tryout.id,
-        },
-      });
-    } catch (error) {
-      throw new Error(
-        [
-          `Gagal menghapus tryout "${tryout.title}".`,
-
-          `Tryout masih memiliki ${tryout._count.sessions} session.`,
-
-          "Pastikan relasi Tryout -> Session dan Session -> Answer menggunakan onDelete: Cascade.",
-
-          `Original error: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        ].join("\n"),
-      );
-    }
   }
 
   const deletedQuestions = await prisma.question.deleteMany({
     where: {
       ownerId: teacherId,
-
       subjectId,
     },
   });
 
-  console.log(`Deleted ${existingTryouts.length} old tryout(s).`);
-
-  console.log(`Deleted ${deletedQuestions.count} old question(s).`);
+  console.log(`Deleted ${deletedQuestions.count} old questions.`);
 }
 
-async function seedQuestions(
+async function seedBiologyQuestions(
   teacherId: string,
   subjectId: string,
   questions: RawQuestion[],
 ) {
-  for (let index = 0; index < questions.length; index += 1) {
-    const rawQuestion = questions[index];
-
-    if (!rawQuestion) {
-      continue;
-    }
-
-    /*
-     * Difficulty tetap dihitung
-     * menggunakan classifier skripsi.
-     */
+  for (const rawQuestion of questions) {
     const difficulty = classifyQuestionDifficulty({
       questionText: rawQuestion.questionText,
-
       imageAltText: null,
-
       hasImage: false,
     });
 
-    /*
-     * Probability WRS berasal dari
-     * weightPriority masing-masing soal.
-     */
     const weight = getWeightFromPriority(rawQuestion.weightPriority);
 
     await prisma.question.create({
       data: {
         subjectId,
-
         ownerId: teacherId,
 
         questionText: rawQuestion.questionText,
 
         optionA: rawQuestion.optionA,
-
         optionB: rawQuestion.optionB,
-
         optionC: rawQuestion.optionC,
-
         optionD: rawQuestion.optionD,
 
         correctAnswer: rawQuestion.correctAnswer,
 
         imageUrl: null,
-
         imagePath: null,
-
         imageAltText: null,
 
         difficultyLevel: difficulty.difficultyLevel,
@@ -1607,10 +1359,6 @@ async function seedQuestions(
         weight,
       },
     });
-
-    if ((index + 1) % 10 === 0) {
-      console.log(`Created ${index + 1}/${questions.length} questions`);
-    }
   }
 }
 
@@ -1620,17 +1368,10 @@ async function createTryout(teacherId: string, subjectId: string) {
   return prisma.tryout.create({
     data: {
       subjectId,
-
       ownerId: teacherId,
 
       title: TRYOUT_TITLE,
 
-      /*
-       * Bank memiliki 100 soal.
-       *
-       * Setiap sesi siswa hanya
-       * mengerjakan 20 soal.
-       */
       totalQuestions: TRYOUT_TOTAL_QUESTIONS,
 
       durationMinutes: TRYOUT_DURATION_MINUTES,
@@ -1652,7 +1393,6 @@ async function printDatabaseDistribution(teacherId: string, subjectId: string) {
 
     where: {
       ownerId: teacherId,
-
       subjectId,
     },
 
@@ -1666,7 +1406,6 @@ async function printDatabaseDistribution(teacherId: string, subjectId: string) {
 
     where: {
       ownerId: teacherId,
-
       subjectId,
     },
 
@@ -1680,7 +1419,6 @@ async function printDatabaseDistribution(teacherId: string, subjectId: string) {
 
     where: {
       ownerId: teacherId,
-
       subjectId,
     },
 
@@ -1690,21 +1428,15 @@ async function printDatabaseDistribution(teacherId: string, subjectId: string) {
   });
 
   console.log("");
-
   console.log("Database difficulty distribution:");
-
   console.table(difficultyDistribution);
 
   console.log("");
-
   console.log("Database WRS priority distribution:");
-
   console.table(priorityDistribution);
 
   console.log("");
-
   console.log("Database answer distribution:");
-
   console.table(answerDistribution);
 }
 
@@ -1712,7 +1444,7 @@ async function main() {
   console.log("Starting Biologi Kelas 10 seed...");
   console.log("");
 
-  assertQuestionCount();
+  assertQuestionCounts();
 
   const teacher = await getTeacher();
 
@@ -1723,62 +1455,36 @@ async function main() {
 
   console.log(`Bank soal: ${subject.name}`);
 
-  /*
-   * Hapus semua data tryout lama:
-   * - answers
-   * - WRS logs
-   * - sessions
-   * - enrollments
-   * - tryout
-   * - questions
-   */
-  console.log("");
-  console.log("Cleaning old seed data...");
-
-  await cleanupExistingData(teacher.id, subject.id);
-
-  /*
-   * Build soal.
-   */
   const questions = buildQuestions(biologySources);
 
-  /*
-   * Difficulty TIDAK dipaksa distribusinya.
-   *
-   * Setiap soal akan diklasifikasikan otomatis
-   * saat masuk database menggunakan:
-   *
-   * classifyQuestionDifficulty()
-   */
+  const difficultyCounts = validateDifficultyClassification(questions);
 
   const priorityCounts = validatePriorityDistribution(questions);
 
   const answerCounts = validateAnswerDistribution(questions);
 
-  const wrsProbability = getWrsPriorityProbability();
+  console.log("");
+  console.log("Validated difficulty:");
+  console.table(difficultyCounts);
 
   console.log("");
-
   console.log("Validated WRS priority:");
   console.table(priorityCounts);
 
   console.log("");
-
-  console.log("WRS base probability by priority:");
-  console.table(wrsProbability);
-
-  console.log("");
-
   console.log("Validated correct answer:");
   console.table(answerCounts);
 
   console.log("");
-  console.log("Creating 100 Biologi questions...");
+  console.log("Cleaning old seed data...");
 
-  await seedQuestions(teacher.id, subject.id, questions);
+  await cleanupExistingData(teacher.id, subject.id);
 
-  console.log("");
-  console.log("Creating Biologi tryout...");
+  console.log("Creating 100 questions...");
+
+  await seedBiologyQuestions(teacher.id, subject.id, questions);
+
+  console.log("Creating tryout...");
 
   const tryout = await createTryout(teacher.id, subject.id);
 
@@ -1790,42 +1496,24 @@ async function main() {
   });
 
   console.log("");
-  console.log("Biologi Kelas 10 seed completed.");
+  console.log("Seed completed.");
+  console.log("------------------------------");
+  console.log(`Teacher : ${teacher.name}`);
+  console.log(`Bank    : ${subject.name}`);
+  console.log(`Questions: ${questionCount}`);
+  console.log(`Tryout  : ${tryout.title}`);
+  console.log(`Join Code: ${tryout.joinCode}`);
+  console.log(`Tryout Questions: ${tryout.totalQuestions}`);
+  console.log(`Duration: ${tryout.durationMinutes} minutes`);
+  console.log(`Max Attempts: ${tryout.maxAttempts ?? "Unlimited"}`);
+  console.log("------------------------------");
 
-  console.log("----------------------------------------");
-
-  console.log(`Teacher          : ${teacher.name}`);
-
-  console.log(`Bank             : ${subject.name}`);
-
-  console.log(`Questions        : ${questionCount}`);
-
-  console.log(`Tryout           : ${tryout.title}`);
-
-  console.log(`Join Code        : ${tryout.joinCode}`);
-
-  console.log(`Questions/Session: ${tryout.totalQuestions}`);
-
-  console.log(`Duration         : ${tryout.durationMinutes} minutes`);
-
-  console.log(`Max Attempts     : ${tryout.maxAttempts ?? "Unlimited"}`);
-
-  console.log("----------------------------------------");
-
-  /*
-   * Di sini tetap akan terlihat distribusi
-   * difficulty aktual dari classifier.
-   *
-   * Tapi berapa pun hasilnya tidak akan
-   * membuat seed gagal.
-   */
   await printDatabaseDistribution(teacher.id, subject.id);
 }
 
 main()
   .catch((error) => {
     console.error("");
-
     console.error("Failed to seed Biologi Kelas 10:", error);
 
     process.exit(1);
