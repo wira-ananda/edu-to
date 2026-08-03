@@ -10,6 +10,7 @@
 
   "editor.formatOnSave": true,
   "editor.formatOnSaveTimeout": 10000,
+  "r.lsp.diagnostics": false,
 
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
@@ -39,13 +40,6 @@
   "[php]": {
     "editor.defaultFormatter": "bmewburn.vscode-intelephense-client",
     "editor.formatOnSave": false
-  },
-
-  "[go]": {
-    "editor.defaultFormatter": "golang.go",
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
-    }
   },
 
   "[svelte]": {
