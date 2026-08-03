@@ -1,0 +1,4 @@
+metric,sample_size,mean_attempt_1,mean_attempt_2,mean_difference,median_difference,normality_p_value,test_used,statistic,p_value,effect_method,effect_size,effect_interpretation
+Nilai tanpa bobot,32,81.45833333333333,83.33333333333333,1.8749999999999973,6.666666666666657,0.0015706995811978401,Wilcoxon signed-rank test,218,0.2847957212132506,Rank-biserial correlation,0.24216524216524216,Kecil
+Jumlah jawaban benar,32,12.21875,12.5,0.28125,1,0.001570699581197813,Wilcoxon signed-rank test,221,0.24645573099131735,Rank-biserial correlation,0.25925925925925924,Kecil
+Nilai berbobot,32,83.31158681545183,84.62572476108497,1.3141379456331255,4.759337983627496,1.1221317867700431e-4,Wilcoxon signed-rank test,276,0.20978906392749264,Rank-biserial correlation,0.2689655172413793,Kecil

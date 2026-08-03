@@ -1,0 +1,2 @@
+log_internal_available,total_records,valid_candidate_percentage,valid_total_weight_percentage,valid_random_value_percentage,selected_level_match_percentage,information
+FALSE,1005,,,,,"Kolom selection_level, candidate_count, total_weight kandidat, dan random_value tidak tersedia pada data sumber. Analisis WRS dibatasi pada distribusi bobot, frekuensi soal terpilih, distribusi kesulitan, dan variasi soal antar peserta. Session_total_weight tidak digunakan sebagai total_weight kandidat karena memiliki arti berbeda."

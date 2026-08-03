@@ -1,0 +1,5 @@
+original_row,timestamp,respondent_name,email,class,school,item_01,item_02,item_03,item_04,item_05,item_06,item_07,item_08,item_09,item_10,item_11,item_12,item_13,item_14,item_15,item_16,item_17,item_18,item_19,item_20,respondent_key,valid_response,all_one_response,timestamp_sort,duplicate_count,kept_record
+15,,Chiquita Aurelia Wiral,,XI.5,,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,chiquitaaureliawiral,TRUE,FALSE,1899-12-31T16:02:24Z,2,FALSE
+32,,Chiquita Aurelia Wiral,,XI.5,,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,chiquitaaureliawiral,TRUE,FALSE,1899-12-31T16:02:24Z,2,TRUE
+3,,IBTISAM UZMA KHUMAIRA,,XI.5,,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,ibtisamuzmakhumaira,TRUE,TRUE,1899-12-31T16:02:24Z,2,FALSE
+33,,Ibtisam Uzma Khumaira,,XI.5,,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,ibtisamuzmakhumaira,TRUE,FALSE,1899-12-31T16:02:24Z,2,TRUE

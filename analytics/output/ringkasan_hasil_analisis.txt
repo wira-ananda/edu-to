@@ -1,0 +1,29 @@
+RINGKASAN HASIL ANALISIS BAB IV
+================================
+
+Tanggal analisis: 04-08-2026 00:40:45
+
+Catatan pembersihan:
+- Data Dian Meylani Pratiwi tidak dimasukkan dalam analisis.
+- Respons kuesioner ganda mempertahankan pengisian terakhir.
+- Data asli tetap disimpan pada folder analytics/data/raw.
+
+STATISTIK DESKRIPTIF PERCOBAAN
+--------------------------------
+Percobaan 1: jumlah siswa = 35, rata-rata nilai = 80.76, median = 80, nilai minimum = 40, nilai maksimum = 100.
+Percobaan 2: jumlah siswa = 32, rata-rata nilai = 83.33, median = 86.67, nilai minimum = 33.33, nilai maksimum = 100.
+
+HASIL PERBANDINGAN PERCOBAAN
+--------------------------------
+Nilai tanpa bobot: rata-rata percobaan 1 = 81.46, rata-rata percobaan 2 = 83.33, p-value = 0.2848. Berdasarkan Wilcoxon signed-rank test, tidak terdapat perbedaan yang signifikan. Effect size = 0.242 (Kecil).
+Jumlah jawaban benar: rata-rata percobaan 1 = 12.22, rata-rata percobaan 2 = 12.5, p-value = 0.2465. Berdasarkan Wilcoxon signed-rank test, tidak terdapat perbedaan yang signifikan. Effect size = 0.259 (Kecil).
+Nilai berbobot: rata-rata percobaan 1 = 83.31, rata-rata percobaan 2 = 84.63, p-value = 0.2098. Berdasarkan Wilcoxon signed-rank test, tidak terdapat perbedaan yang signifikan. Effect size = 0.269 (Kecil).
+
+KUESIONER SISWA
+--------------------------------
+Jumlah responden siswa: 34. Rata-rata keseluruhan: 4.59 dengan kategori Sangat Tinggi.
+
+FILE HASIL
+--------------------------------
+Workbook: /Users/wiraananda/Ngoding/personal-project/my-ta/analytics/output/hasil_analisis_bab_4.xlsx
+Grafik: /Users/wiraananda/Ngoding/personal-project/my-ta/analytics/output/figures

@@ -1,0 +1,9 @@
+attempt_number,answer_result,transition_category,transition_count,percentage
+1,Benar,Naik,105,26.448362720403022
+1,Benar,Tetap,292,73.55163727959699
+1,Salah,Tetap,5,5.376344086021505
+1,Salah,Turun,88,94.6236559139785
+2,Benar,Naik,97,26.1455525606469
+2,Benar,Tetap,274,73.8544474393531
+2,Salah,Tetap,17,22.07792207792208
+2,Salah,Turun,60,77.92207792207793
