@@ -199,6 +199,8 @@ export type TryoutParticipantsResponse = {
     title: string;
     maxAttempts: number | null;
     status: TryoutStatus;
+    joinCode: string | null;
+    joinCodeEnabled: boolean;
   };
   summary: {
     totalParticipants: number;

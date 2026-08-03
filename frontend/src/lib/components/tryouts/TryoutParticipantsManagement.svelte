@@ -45,6 +45,7 @@
 
     backHref: string;
     resultsHref: string;
+    comparisonHref?: string;
 
     title?: string;
     description?: string;
@@ -70,6 +71,7 @@
 
     backHref,
     resultsHref,
+    comparisonHref = "",
 
     title = "Peserta Tryout",
     description = "Kelola permintaan bergabung dan pantau aktivitas peserta.",
@@ -133,9 +135,9 @@
 <section class="space-y-6">
   <!-- Page heading -->
   <div
-    class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+    class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"
   >
-    <div>
+    <div class="min-w-0">
       <a
         href={backHref}
         class="mb-3 inline-flex items-center gap-2 text-sm font-bold text-[#0c438c] transition hover:text-[#062b63]"
@@ -157,25 +159,80 @@
         {title}
       </h2>
 
-      <p class="mt-1 text-sm text-slate-500">
+      <p class="mt-1 text-sm leading-6 text-slate-500">
         {description}
       </p>
     </div>
 
-    <div class="flex flex-wrap gap-2">
+    <div
+      class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end"
+    >
+      {#if comparisonHref}
+        <a
+          href={comparisonHref}
+          class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm font-black text-[#0c438c] transition hover:border-[#0c438c] hover:bg-white"
+        >
+          <svg
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M4 19V5" />
+            <path d="M9 19V9" />
+            <path d="M14 19V7" />
+            <path d="M19 19V3" />
+          </svg>
+
+          Bandingkan Soal
+        </a>
+      {/if}
+
       <button
         type="button"
-        onclick={() => onRefresh()}
+        onclick={() => void onRefresh()}
         disabled={loading || refreshing}
-        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+        class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
+        {#if refreshing}
+          <span
+            class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+          ></span>
+        {:else}
+          <svg
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+            <path d="M20 4v6h-6" />
+          </svg>
+        {/if}
+
         {refreshing ? "Memuat..." : "Refresh"}
       </button>
 
       <a
         href={resultsHref}
-        class="rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#052757]"
+        class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#062b63] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#052757]"
       >
+        <svg
+          class="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M8 21h8" />
+          <path d="M12 17v4" />
+          <path d="M7 4h10v4a5 5 0 0 1-10 0V4Z" />
+          <path d="M5 4H3v2a4 4 0 0 0 4 4" />
+          <path d="M19 4h2v2a4 4 0 0 1-4 4" />
+        </svg>
+
         Lihat Hasil
       </a>
     </div>
@@ -184,7 +241,7 @@
   <!-- Messages -->
   {#if errorMessage}
     <div
-      class="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+      class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
     >
       {errorMessage}
     </div>
@@ -192,7 +249,7 @@
 
   {#if successMessage}
     <div
-      class="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+      class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
     >
       {successMessage}
     </div>
@@ -220,7 +277,7 @@
     <!-- Tryout information -->
     <div class="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
       <div
-        class="relative min-h-40 overflow-hidden rounded-2xl bg-[#062b63] p-5 text-white"
+        class="relative min-h-40 overflow-hidden rounded-2xl bg-[#062b63] p-5 text-white shadow-sm"
       >
         <div
           class="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rotate-12 rounded-[50px] bg-[#0c438c]"
@@ -323,7 +380,7 @@
         <div>
           <h3 class="font-black text-slate-950">Tambah Peserta Manual</h3>
 
-          <p class="mt-1 text-sm text-slate-500">
+          <p class="mt-1 text-sm leading-6 text-slate-500">
             Masukkan Student ID untuk menambahkan siswa secara langsung.
           </p>
         </div>

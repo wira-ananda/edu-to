@@ -136,3 +136,46 @@ export type TeacherEnrollmentParamInput = z.infer<
 export type TeacherEnrollmentStatusInput = z.infer<
   typeof teacherEnrollmentStatusSchema
 >;
+const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    value === "ALL"
+  ) {
+    return undefined;
+  }
+
+  return value;
+}, z.coerce.number().int().min(1).optional());
+
+export const teacherQuestionComparisonQuerySchema = z.object({
+  questionNumber: z.coerce
+    .number()
+    .int()
+    .min(1, "Nomor soal minimal 1")
+    .default(1),
+
+  attemptNumber: optionalPositiveIntegerQuerySchema,
+
+  search: z
+    .string()
+    .trim()
+    .max(100, "Pencarian maksimal 100 karakter")
+    .optional()
+    .default(""),
+
+  difficultyLevel: z
+    .enum(["ALL", "LOW", "MEDIUM", "HIGH"])
+    .optional()
+    .default("ALL"),
+
+  answerStatus: z
+    .enum(["ALL", "CORRECT", "WRONG", "UNANSWERED"])
+    .optional()
+    .default("ALL"),
+});
+
+export type TeacherQuestionComparisonQuery = z.infer<
+  typeof teacherQuestionComparisonQuerySchema
+>;
