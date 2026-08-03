@@ -222,6 +222,7 @@
   {successMessage}
   backHref="/teacher/tryouts"
   resultsHref={`/teacher/results?tryoutId=${tryoutId}`}
+  comparisonHref={`/teacher/results/${tryoutId}/comparison`}
   onRefresh={refreshParticipants}
   onEnrollStudent={enrollStudent}
   onApprove={approveEnrollment}

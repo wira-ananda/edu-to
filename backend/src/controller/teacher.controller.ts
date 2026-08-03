@@ -16,9 +16,11 @@ import {
   teacherTryoutSchema,
   teacherTryoutStatusSchema,
   weightPriorities,
+  teacherQuestionComparisonQuerySchema,
 } from "../schema/teacher.schema.js";
 import type { AppEnv } from "../types/hono.js";
 import type { DifficultyLevel, WeightPriority } from "../types/domain.js";
+import teacherQuestionComparisonService from "../service/teacher-question-comparison.service.js";
 
 type TeacherContext = Context<AppEnv>;
 
@@ -760,6 +762,43 @@ async function getTryoutStatistics(c: TeacherContext) {
     return handleError(c, error, "Gagal memuat statistik tryout.");
   }
 }
+async function getQuestionComparison(c: TeacherContext) {
+  try {
+    const user = c.get("user");
+    const id = getRequiredParam(c, "id");
+
+    const parsed = teacherQuestionComparisonQuerySchema.safeParse({
+      questionNumber: c.req.query("questionNumber"),
+      attemptNumber: c.req.query("attemptNumber"),
+      search: c.req.query("search"),
+      difficultyLevel: c.req.query("difficultyLevel"),
+      answerStatus: c.req.query("answerStatus"),
+    });
+
+    if (!parsed.success) {
+      return c.json(
+        {
+          ok: false,
+          message: getValidationMessage(parsed.error),
+        },
+        400,
+      );
+    }
+
+    const result = await teacherQuestionComparisonService.getQuestionComparison(
+      user.id,
+      id,
+      parsed.data,
+    );
+
+    return c.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    return handleError(c, error, "Gagal memuat perbandingan soal peserta.");
+  }
+}
 
 export default {
   check,
@@ -791,4 +830,5 @@ export default {
 
   getTryoutResults,
   getTryoutStatistics,
+  getQuestionComparison,
 };

@@ -42,11 +42,15 @@ teacherRoutes.get(
   teacherController.getTryoutStatistics,
 );
 
+teacherRoutes.get(
+  "/tryouts/:id/question-comparison",
+  teacherController.getQuestionComparison,
+);
+
 teacherRoutes.patch(
   "/tryouts/:id/join-code/regenerate",
   teacherController.regenerateTryoutJoinCode,
 );
-
 teacherRoutes.get("/tryouts/:id", teacherController.getTryoutById);
 teacherRoutes.put("/tryouts/:id", teacherController.updateTryout);
 
