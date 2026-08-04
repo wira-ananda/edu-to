@@ -3,9 +3,21 @@
 # Perbandingan percobaan pertama dan kedua
 # ============================================================
 
-source("00_setup.R")
+SETUP_FILE <- if (
+    file.exists("analytics/script/00_setup.R")
+) {
+    "analytics/script/00_setup.R"
+} else if (
+    file.exists("00_setup.R")
+) {
+    "00_setup.R"
+} else {
+    stop("File 00_setup.R tidak ditemukan.")
+}
 
-SUMMARY_FILE <- here(
+source(SETUP_FILE)
+
+SUMMARY_FILE <- here::here(
     "analytics",
     "output",
     "tables",
@@ -22,15 +34,33 @@ if (!file.exists(SUMMARY_FILE)) {
 student_summary <- readr::read_csv(
     SUMMARY_FILE,
     show_col_types = FALSE
-)
+) |>
+    dplyr::mutate(
+        attempt_number = as.integer(
+            attempt_number
+        ),
+        completed = as.logical(completed),
+        correct_count = as.numeric(
+            correct_count
+        ),
+        score_100 = as.numeric(
+            score_100
+        ),
+        weighted_score_100 = as.numeric(
+            weighted_score_100
+        )
+    )
 
-# Hanya siswa yang memiliki dua percobaan lengkap
+# ============================================================
+# DATA SISWA DENGAN DUA PERCOBAAN LENGKAP
+# ============================================================
 
 paired_data <- student_summary |>
-    filter(
-        completed
+    dplyr::filter(
+        completed,
+        attempt_number %in% c(1L, 2L)
     ) |>
-    select(
+    dplyr::select(
         student_key,
         student_name,
         attempt_number,
@@ -40,7 +70,7 @@ paired_data <- student_summary |>
         initial_level,
         final_level
     ) |>
-    pivot_wider(
+    tidyr::pivot_wider(
         names_from = attempt_number,
         values_from = c(
             correct_count,
@@ -49,13 +79,14 @@ paired_data <- student_summary |>
             initial_level,
             final_level
         ),
-        names_glue = "{.value}_attempt_{attempt_number}"
+        names_glue =
+            "{.value}_attempt_{attempt_number}"
     ) |>
-    filter(
+    dplyr::filter(
         !is.na(score_100_attempt_1),
         !is.na(score_100_attempt_2)
     ) |>
-    mutate(
+    dplyr::mutate(
         difference_correct =
             correct_count_attempt_2 -
                 correct_count_attempt_1,
@@ -69,7 +100,10 @@ paired_data <- student_summary |>
 
 if (nrow(paired_data) < 2) {
     stop(
-        "Jumlah siswa dengan dua percobaan lengkap tidak mencukupi."
+        paste(
+            "Jumlah siswa dengan dua percobaan",
+            "lengkap tidak mencukupi."
+        )
     )
 }
 
@@ -78,12 +112,17 @@ save_csv_table(
     "data_perbandingan_percobaan.csv"
 )
 
-# ------------------------------------------------------------
-# Fungsi effect size Wilcoxon
-# ------------------------------------------------------------
+# ============================================================
+# FUNGSI EFFECT SIZE
+# ============================================================
 
-paired_rank_biserial <- function(x, y) {
-    difference <- x - y
+paired_rank_biserial <- function(
+  attempt_1,
+  attempt_2
+) {
+    difference <-
+        attempt_2 -
+            attempt_1
 
     difference <- difference[
         !is.na(difference) &
@@ -91,7 +130,7 @@ paired_rank_biserial <- function(x, y) {
     ]
 
     if (length(difference) == 0) {
-        return(NA_real_)
+        return(0)
     }
 
     absolute_ranks <- rank(
@@ -113,10 +152,10 @@ paired_rank_biserial <- function(x, y) {
 
     total_rank <-
         positive_rank +
-        negative_rank
+            negative_rank
 
     if (total_rank == 0) {
-        return(NA_real_)
+        return(0)
     }
 
     (
@@ -130,9 +169,7 @@ interpret_effect_size <- function(
   effect_value,
   method
 ) {
-    absolute_effect <- abs(
-        effect_value
-    )
+    absolute_effect <- abs(effect_value)
 
     if (is.na(absolute_effect)) {
         return(NA_character_)
@@ -165,16 +202,16 @@ interpret_effect_size <- function(
     )
 }
 
-# ------------------------------------------------------------
-# Fungsi uji perbandingan berpasangan
-# ------------------------------------------------------------
+# ============================================================
+# FUNGSI UJI PERBANDINGAN BERPASANGAN
+# ============================================================
 
 compare_paired_metric <- function(
   attempt_1,
   attempt_2,
   metric_name
 ) {
-    valid <- complete.cases(
+    valid <- stats::complete.cases(
         attempt_1,
         attempt_2
     )
@@ -182,7 +219,6 @@ compare_paired_metric <- function(
     x <- attempt_1[valid]
     y <- attempt_2[valid]
     difference <- y - x
-
     sample_size <- length(difference)
 
     if (sample_size < 2) {
@@ -193,6 +229,7 @@ compare_paired_metric <- function(
                 mean_attempt_1 = NA_real_,
                 mean_attempt_2 = NA_real_,
                 mean_difference = NA_real_,
+                median_difference = NA_real_,
                 normality_p_value = NA_real_,
                 test_used = NA_character_,
                 statistic = NA_real_,
@@ -205,14 +242,37 @@ compare_paired_metric <- function(
         )
     }
 
+    if (all(difference == 0)) {
+        return(
+            tibble::tibble(
+                metric = metric_name,
+                sample_size = sample_size,
+                mean_attempt_1 = mean(x),
+                mean_attempt_2 = mean(y),
+                mean_difference = 0,
+                median_difference = 0,
+                normality_p_value = NA_real_,
+                test_used =
+                    "Tidak ada perubahan",
+                statistic = 0,
+                p_value = 1,
+                effect_method =
+                    "Rank-biserial correlation",
+                effect_size = 0,
+                effect_interpretation =
+                    "Sangat kecil"
+            )
+        )
+    }
+
     normality_p <- NA_real_
 
     if (
         sample_size >= 3 &&
             sample_size <= 5000 &&
-            sd(difference) > 0
+            stats::sd(difference) > 0
     ) {
-        normality_p <- shapiro.test(
+        normality_p <- stats::shapiro.test(
             difference
         )$p.value
     }
@@ -222,7 +282,7 @@ compare_paired_metric <- function(
             normality_p > 0.05
 
     if (use_t_test) {
-        test_result <- t.test(
+        test_result <- stats::t.test(
             y,
             x,
             paired = TRUE,
@@ -230,16 +290,12 @@ compare_paired_metric <- function(
         )
 
         effect_method <- "Cohen dz"
-
-        effect_size <- mean(
-            difference
-        ) /
-            sd(difference)
-
+        effect_size <- mean(difference) /
+            stats::sd(difference)
         test_name <- "Paired t-test"
     } else {
         test_result <- suppressWarnings(
-            wilcox.test(
+            stats::wilcox.test(
                 y,
                 x,
                 paired = TRUE,
@@ -250,13 +306,11 @@ compare_paired_metric <- function(
 
         effect_method <-
             "Rank-biserial correlation"
-
         effect_size <-
             paired_rank_biserial(
-                y,
-                x
+                x,
+                y
             )
-
         test_name <-
             "Wilcoxon signed-rank test"
     }
@@ -264,40 +318,30 @@ compare_paired_metric <- function(
     tibble::tibble(
         metric = metric_name,
         sample_size = sample_size,
-        mean_attempt_1 =
-            mean(
-                x,
-                na.rm = TRUE
-            ),
-        mean_attempt_2 =
-            mean(
-                y,
-                na.rm = TRUE
-            ),
-        mean_difference =
-            mean(
-                difference,
-                na.rm = TRUE
-            ),
-        median_difference =
-            median(
-                difference,
-                na.rm = TRUE
-            ),
-        normality_p_value =
-            normality_p,
-        test_used =
-            test_name,
-        statistic =
-            unname(
-                test_result$statistic
-            ),
-        p_value =
-            test_result$p.value,
-        effect_method =
-            effect_method,
-        effect_size =
-            effect_size,
+        mean_attempt_1 = mean(
+            x,
+            na.rm = TRUE
+        ),
+        mean_attempt_2 = mean(
+            y,
+            na.rm = TRUE
+        ),
+        mean_difference = mean(
+            difference,
+            na.rm = TRUE
+        ),
+        median_difference = stats::median(
+            difference,
+            na.rm = TRUE
+        ),
+        normality_p_value = normality_p,
+        test_used = test_name,
+        statistic = unname(
+            test_result$statistic
+        ),
+        p_value = test_result$p.value,
+        effect_method = effect_method,
+        effect_size = effect_size,
         effect_interpretation =
             interpret_effect_size(
                 effect_size,
@@ -324,7 +368,7 @@ weighted_test <- compare_paired_metric(
     "Nilai berbobot"
 )
 
-comparison_tests <- bind_rows(
+comparison_tests <- dplyr::bind_rows(
     score_test,
     correct_test,
     weighted_test
@@ -335,14 +379,14 @@ save_csv_table(
     "hasil_uji_perbandingan_percobaan.csv"
 )
 
-# ------------------------------------------------------------
-# Ringkasan perubahan nilai
-# ------------------------------------------------------------
+# ============================================================
+# RINGKASAN PERUBAHAN NILAI
+# ============================================================
 
 score_change_summary <- paired_data |>
-    mutate(
+    dplyr::mutate(
         change_category =
-            case_when(
+            dplyr::case_when(
                 difference_score > 0 ~
                     "Meningkat",
                 difference_score < 0 ~
@@ -351,11 +395,11 @@ score_change_summary <- paired_data |>
                     "Tetap"
             )
     ) |>
-    count(
+    dplyr::count(
         change_category,
         name = "student_count"
     ) |>
-    mutate(
+    dplyr::mutate(
         percentage =
             student_count /
                 sum(student_count) *
@@ -367,9 +411,9 @@ save_csv_table(
     "kategori_perubahan_nilai.csv"
 )
 
-# ------------------------------------------------------------
-# Perubahan tingkat akhir
-# ------------------------------------------------------------
+# ============================================================
+# PERUBAHAN LEVEL AKHIR
+# ============================================================
 
 level_value <- c(
     LOW = 1,
@@ -378,7 +422,7 @@ level_value <- c(
 )
 
 level_comparison <- paired_data |>
-    mutate(
+    dplyr::mutate(
         final_level_value_1 =
             unname(
                 level_value[
@@ -395,7 +439,7 @@ level_comparison <- paired_data |>
             final_level_value_2 -
                 final_level_value_1,
         level_change =
-            case_when(
+            dplyr::case_when(
                 final_level_difference > 0 ~
                     "Meningkat",
                 final_level_difference < 0 ~
@@ -408,14 +452,14 @@ level_comparison <- paired_data |>
     )
 
 level_change_summary <- level_comparison |>
-    count(
+    dplyr::count(
         level_change,
         name = "student_count"
     ) |>
-    filter(
+    dplyr::filter(
         !is.na(level_change)
     ) |>
-    mutate(
+    dplyr::mutate(
         percentage =
             student_count /
                 sum(student_count) *
@@ -432,26 +476,26 @@ save_csv_table(
     "ringkasan_perubahan_level.csv"
 )
 
-# ------------------------------------------------------------
-# Grafik perbandingan
-# ------------------------------------------------------------
+# ============================================================
+# GRAFIK PERBANDINGAN
+# ============================================================
 
 paired_long <- paired_data |>
-    select(
+    dplyr::select(
         student_key,
         student_name,
         score_100_attempt_1,
         score_100_attempt_2
     ) |>
-    pivot_longer(
-        cols = starts_with(
+    tidyr::pivot_longer(
+        cols = dplyr::starts_with(
             "score_100_attempt_"
         ),
         names_to = "attempt",
         values_to = "score"
     ) |>
-    mutate(
-        attempt = case_when(
+    dplyr::mutate(
+        attempt = dplyr::case_when(
             attempt ==
                 "score_100_attempt_1" ~
                 "Percobaan 1",
@@ -469,21 +513,21 @@ paired_long <- paired_data |>
         )
     )
 
-paired_line_plot <- ggplot(
+paired_line_plot <- ggplot2::ggplot(
     paired_long,
-    aes(
+    ggplot2::aes(
         x = attempt,
         y = score,
         group = student_key
     )
 ) +
-    geom_line(
+    ggplot2::geom_line(
         alpha = 0.45
     ) +
-    geom_point(
+    ggplot2::geom_point(
         size = 2
     ) +
-    labs(
+    ggplot2::labs(
         title = "Perubahan Nilai Setiap Siswa",
         x = NULL,
         y = "Nilai"
@@ -494,23 +538,25 @@ save_figure(
     "perubahan_nilai_setiap_siswa.png"
 )
 
-difference_plot <- ggplot(
+difference_plot <- ggplot2::ggplot(
     paired_data,
-    aes(
+    ggplot2::aes(
         x = difference_score
     )
 ) +
-    geom_histogram(
+    ggplot2::geom_histogram(
         bins = 12
     ) +
-    geom_vline(
+    ggplot2::geom_vline(
         xintercept = 0,
         linetype = "dashed"
     ) +
-    labs(
+    ggplot2::labs(
         title = "Distribusi Selisih Nilai",
-        subtitle =
-            "Nilai percobaan kedua dikurangi percobaan pertama",
+        subtitle = paste(
+            "Nilai percobaan kedua dikurangi",
+            "percobaan pertama"
+        ),
         x = "Selisih Nilai",
         y = "Jumlah Siswa"
     )
@@ -520,26 +566,21 @@ save_figure(
     "distribusi_selisih_nilai.png"
 )
 
-# ------------------------------------------------------------
-# Workbook perbandingan
-# ------------------------------------------------------------
+# ============================================================
+# WORKBOOK PERBANDINGAN
+# ============================================================
 
 comparison_workbook <- list(
-    Data_Berpasangan =
-        paired_data,
-    Hasil_Uji =
-        comparison_tests,
-    Perubahan_Nilai =
-        score_change_summary,
-    Perbandingan_Level =
-        level_comparison,
-    Ringkasan_Level =
-        level_change_summary
+    Data_Berpasangan = paired_data,
+    Hasil_Uji = comparison_tests,
+    Perubahan_Nilai = score_change_summary,
+    Perbandingan_Level = level_comparison,
+    Ringkasan_Level = level_change_summary
 )
 
 writexl::write_xlsx(
     comparison_workbook,
-    here(
+    here::here(
         "analytics",
         "output",
         "tables",

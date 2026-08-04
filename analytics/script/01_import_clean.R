@@ -1,55 +1,49 @@
 # ============================================================
 # 01_import_clean.R
-# Import dan pembersihan data tryout serta kuesioner
+# Import dan pembersihan data tryout JSON serta kuesioner siswa
 # ============================================================
 
-source("00_setup.R")
+SETUP_FILE <- if (
+    file.exists("analytics/script/00_setup.R")
+) {
+    "analytics/script/00_setup.R"
+} else if (
+    file.exists("00_setup.R")
+) {
+    "00_setup.R"
+} else {
+    stop("File 00_setup.R tidak ditemukan.")
+}
 
+source(SETUP_FILE)
 
 # ============================================================
 # KONFIGURASI FILE
 # ============================================================
 
-TRYOUT_FILE <- here(
+TRYOUT_FILE <- here::here(
     "analytics",
     "data",
     "raw",
-    "tryout-biologi-kelas-10-lengkap-1-15.xlsx"
+    "tryout-biologi-kelas-10-semua-percobaan.json"
 )
 
-STUDENT_QUESTIONNAIRE_FILE <- here(
+STUDENT_QUESTIONNAIRE_FILE <- here::here(
     "analytics",
     "data",
     "raw",
     "rekap_uji_coba_tryout_wira_lengkap.xlsx"
 )
 
-TEACHER_QUESTIONNAIRE_FILE <- here(
-    "analytics",
-    "data",
-    "raw",
-    "kuesioner_guru.xlsx"
-)
+TARGET_ATTEMPTS <- c(1L, 2L)
+EXCLUDED_STUDENT_NAME <- "Dian Meylani Pratiwi"
 
-
-# ============================================================
-# KONFIGURASI REVERSE SCORING
-# ============================================================
-
-# Isi setelah memeriksa file pemetaan item.
-#
-# Contoh:
-# REVERSE_ITEMS_STUDENT <- c("item_03", "item_08")
-#
-# Rumus reverse scoring:
-# skor baru = 6 - skor lama
-
+# Isi setelah memeriksa file pemetaan item apabila ada
+# pernyataan negatif yang harus dibalik skornya.
 REVERSE_ITEMS_STUDENT <- character(0)
-REVERSE_ITEMS_TEACHER <- character(0)
-
 
 # ============================================================
-# OPERATOR BANTUAN
+# OPERATOR DAN FUNGSI DASAR
 # ============================================================
 
 `%||%` <- function(x, y) {
@@ -63,128 +57,6 @@ REVERSE_ITEMS_TEACHER <- character(0)
         x
     }
 }
-
-
-# ============================================================
-# FUNGSI MEMILIH DAN MEMBACA SHEET EXCEL
-# ============================================================
-
-choose_excel_sheet <- function(
-  file_path,
-  preferred_sheets = c(
-      "detail_soal",
-      "detail",
-      "data",
-      "tryout",
-      "sheet1"
-  )
-) {
-    available_sheets <- readxl::excel_sheets(
-        file_path
-    )
-
-    normalized_sheets <- janitor::make_clean_names(
-        available_sheets
-    )
-
-    preferred_match <- match(
-        preferred_sheets,
-        normalized_sheets
-    )
-
-    preferred_match <- preferred_match[
-        !is.na(preferred_match)
-    ]
-
-    if (length(preferred_match) > 0) {
-        return(
-            available_sheets[
-                preferred_match[1]
-            ]
-        )
-    }
-
-    available_sheets[1]
-}
-
-
-read_excel_automatically <- function(
-  file_path,
-  preferred_sheets = c(
-      "detail_soal",
-      "detail",
-      "data",
-      "tryout",
-      "sheet1"
-  )
-) {
-    if (!file.exists(file_path)) {
-        stop(
-            "File tidak ditemukan: ",
-            file_path
-        )
-    }
-
-    selected_sheet <- choose_excel_sheet(
-        file_path,
-        preferred_sheets
-    )
-
-    message(
-        "Membaca file ",
-        basename(file_path),
-        " pada sheet: ",
-        selected_sheet
-    )
-
-    readxl::read_excel(
-        file_path,
-        sheet = selected_sheet
-    ) |>
-        janitor::clean_names()
-}
-
-
-# ============================================================
-# FUNGSI PENCARIAN KOLOM
-# ============================================================
-
-find_column <- function(
-  data,
-  candidates,
-  required = FALSE,
-  label = NULL
-) {
-    available_names <- names(data)
-
-    exact_match <- intersect(
-        candidates,
-        available_names
-    )
-
-    if (length(exact_match) > 0) {
-        return(exact_match[1])
-    }
-
-    if (required) {
-        stop(
-            "Kolom ",
-            label %||% paste(
-                candidates,
-                collapse = "/"
-            ),
-            " tidak ditemukan.\n\n",
-            "Kolom yang tersedia:\n",
-            paste(
-                available_names,
-                collapse = ", "
-            )
-        )
-    }
-
-    NA_character_
-}
-
 
 get_column_value <- function(
   data,
@@ -207,10 +79,32 @@ get_column_value <- function(
     data[[column_name]]
 }
 
+find_column <- function(
+  data,
+  candidates,
+  required = FALSE,
+  label = NULL
+) {
+    exact_match <- intersect(
+        candidates,
+        names(data)
+    )
 
-# ============================================================
-# FUNGSI NORMALISASI DATA
-# ============================================================
+    if (length(exact_match) > 0) {
+        return(exact_match[[1]])
+    }
+
+    if (required) {
+        stop(
+            "Kolom ",
+            label %||% paste(candidates, collapse = "/"),
+            " tidak ditemukan.\n\nKolom tersedia:\n",
+            paste(names(data), collapse = ", ")
+        )
+    }
+
+    NA_character_
+}
 
 normalize_level <- function(x) {
     value <- x |>
@@ -240,7 +134,6 @@ normalize_level <- function(x) {
         TRUE ~ NA_character_
     )
 }
-
 
 parse_boolean <- function(x) {
     if (is.logical(x)) {
@@ -284,7 +177,6 @@ parse_boolean <- function(x) {
     )
 }
 
-
 parse_numeric_value <- function(x) {
     suppressWarnings(
         readr::parse_number(
@@ -293,385 +185,418 @@ parse_numeric_value <- function(x) {
     )
 }
 
-
 # ============================================================
-# MEMBACA DATA TRYOUT
-# ============================================================
-
-tryout_raw <- readxl::read_excel(
-    TRYOUT_FILE,
-    sheet = "Detail 1-15",
-    skip = 3
-) |>
-    janitor::clean_names()
-
-# ============================================================
-# MEMBACA SHEET RINGKASAN SISWA
-# Header terdapat pada baris ke-3
+# MEMBACA RAW DATA TRYOUT DARI JSON
 # ============================================================
 
-ringkasan_siswa_raw <- readxl::read_excel(
-    TRYOUT_FILE,
-    sheet = "Ringkasan Siswa",
-    skip = 2
-) |>
-    janitor::clean_names()
-
-# ============================================================
-# MEMBACA SHEET RINGKASAN NOMOR SOAL
-# Header terdapat pada baris ke-3
-# ============================================================
-
-ringkasan_no_soal_raw <- readxl::read_excel(
-    TRYOUT_FILE,
-    sheet = "Ringkasan No Soal",
-    skip = 2
-) |>
-    janitor::clean_names()
-
-message("\nKolom asli data tryout:")
-print(names(tryout_raw))
-
-message("\nKolom Ringkasan Siswa:")
-print(names(ringkasan_siswa_raw))
-
-message("\nKolom Ringkasan Nomor Soal:")
-print(names(ringkasan_no_soal_raw))
-
-# ============================================================
-# MENDETEKSI KOLOM DATA TRYOUT
-# ============================================================
-
-student_id_column <- find_column(
-    tryout_raw,
-    c(
-        "student_id",
-        "id_siswa",
-        "siswa_id",
-        "id_peserta",
-        "peserta_id"
-    )
-)
-
-
-student_name_column <- find_column(
-    tryout_raw,
-    c(
-        "student_name",
-        "nama_siswa",
-        "nama_peserta",
-        "siswa",
-        "peserta",
-        "name"
-    ),
-    required = TRUE,
-    label = "nama siswa"
-)
-
-
-attempt_column <- find_column(
-    tryout_raw,
-    c(
-        "attempt_number",
-        "attempt",
-        "percobaan",
-        "nomor_percobaan",
-        "percobaan_ke"
-    ),
-    required = TRUE,
-    label = "nomor percobaan"
-)
-
-
-question_number_column <- find_column(
-    tryout_raw,
-    c(
-        "question_number",
-        "nomor_soal",
-        "no_soal",
-        "soal_ke",
-        "urutan_soal",
-        "nomor"
-    ),
-    required = TRUE,
-    label = "nomor soal"
-)
-
-
-question_id_column <- find_column(
-    tryout_raw,
-    c(
-        "question_id",
-        "id_soal",
-        "soal_id"
-    )
-)
-
-
-question_text_column <- find_column(
-    tryout_raw,
-    c(
-        "question_text",
-        "text",
-        "teks_soal",
-        "teks_soal_yang_diperoleh",
-        "pertanyaan",
-        "soal",
-        "isi_soal"
-    ),
-    required = TRUE,
-    label = "teks soal"
-)
-
-difficulty_column <- find_column(
-    tryout_raw,
-    c(
-        "difficulty",
-        "difficulty_level",
-        "tingkat_kesulitan",
-        "kesulitan",
-        "level_soal"
-    ),
-    required = TRUE,
-    label = "tingkat kesulitan"
-)
-
-
-weight_column <- find_column(
-    tryout_raw,
-    c(
-        "weight",
-        "bobot",
-        "priority_weight",
-        "bobot_prioritas",
-        "nilai_bobot"
-    ),
-    required = TRUE,
-    label = "bobot"
-)
-
-
-answer_key_column <- find_column(
-    tryout_raw,
-    c(
-        "answer_key",
-        "correct_answer",
-        "kunci_jawaban",
-        "jawaban_benar",
-        "kunci"
-    )
-)
-
-
-is_correct_column <- find_column(
-    tryout_raw,
-    c(
-        "is_correct",
-        "benar_salah",
-        "hasil_jawaban",
-        "status_jawaban",
-        "hasil",
-        "benar"
-    ),
-    required = TRUE,
-    label = "hasil benar atau salah"
-)
-
-
-initial_level_column <- find_column(
-    tryout_raw,
-    c(
-        "initial_level",
-        "level_awal",
-        "tingkat_awal",
-        "initial_difficulty"
-    )
-)
-
-
-final_level_column <- find_column(
-    tryout_raw,
-    c(
-        "final_level",
-        "level_akhir",
-        "tingkat_akhir",
-        "final_difficulty"
-    )
-)
-
-
-selection_level_column <- find_column(
-    tryout_raw,
-    c(
-        "selection_level",
-        "current_level",
-        "level_saat_dipilih",
-        "tingkat_saat_dipilih"
-    )
-)
-
-
-candidate_count_column <- find_column(
-    tryout_raw,
-    c(
-        "candidate_count",
-        "jumlah_kandidat",
-        "total_kandidat"
-    )
-)
-
-
-total_weight_column <- find_column(
-    tryout_raw,
-    c(
-        "total_weight",
-        "total_bobot",
-        "jumlah_bobot"
-    )
-)
-
-
-random_value_column <- find_column(
-    tryout_raw,
-    c(
-        "random_value",
-        "nilai_acak",
-        "angka_acak"
-    )
-)
-
-
-# ============================================================
-# MEMBENTUK DATA TRYOUT BERSIH
-# ============================================================
-
-tryout_clean <- tibble::tibble(
-    student_id = as.character(
-        get_column_value(
-            tryout_raw,
-            student_id_column
+read_tryout_json <- function(file_path) {
+    if (!file.exists(file_path)) {
+        stop(
+            "File JSON tryout tidak ditemukan: ",
+            file_path
         )
-    ),
-    student_name = stringr::str_squish(
-        as.character(
-            get_column_value(
-                tryout_raw,
-                student_name_column
-            )
-        )
-    ),
-    attempt_number = as.integer(
-        parse_numeric_value(
-            get_column_value(
-                tryout_raw,
-                attempt_column
-            )
-        )
-    ),
-    question_number = as.integer(
-        parse_numeric_value(
-            get_column_value(
-                tryout_raw,
-                question_number_column
-            )
-        )
-    ),
-    question_id = as.character(
-        get_column_value(
-            tryout_raw,
-            question_id_column
-        )
-    ),
-    question_text = stringr::str_squish(
-        as.character(
-            get_column_value(
-                tryout_raw,
-                question_text_column
-            )
-        )
-    ),
-    difficulty = normalize_level(
-        get_column_value(
-            tryout_raw,
-            difficulty_column
-        )
-    ),
-    weight = parse_numeric_value(
-        get_column_value(
-            tryout_raw,
-            weight_column
-        )
-    ),
-    answer_key = stringr::str_to_upper(
-        stringr::str_squish(
-            as.character(
-                get_column_value(
-                    tryout_raw,
-                    answer_key_column
+    }
+
+    raw_json <- jsonlite::read_json(
+        file_path,
+        simplifyVector = FALSE
+    )
+
+    attempts <- raw_json$attempts
+
+    if (
+        is.null(attempts) ||
+            length(attempts) == 0
+    ) {
+        stop("JSON tidak memiliki data attempts.")
+    }
+
+    tryout_rows <- purrr::imap_dfr(
+        attempts,
+        function(
+          attempt_data,
+          attempt_index
+        ) {
+            parent_attempt_number <- as.integer(
+                purrr::pluck(
+                    attempt_data,
+                    "attemptNumber",
+                    .default = attempt_index
                 )
             )
+
+            questions <- purrr::pluck(
+                attempt_data,
+                "questions",
+                .default = list()
+            )
+
+            if (length(questions) == 0) {
+                return(tibble::tibble())
+            }
+
+            purrr::imap_dfr(
+                questions,
+                function(
+                  question_data,
+                  question_index
+                ) {
+                    parent_question_number <- as.integer(
+                        purrr::pluck(
+                            question_data,
+                            "questionNumber",
+                            .default = question_index
+                        )
+                    )
+
+                    items <- purrr::pluck(
+                        question_data,
+                        "items",
+                        .default = list()
+                    )
+
+                    if (length(items) == 0) {
+                        return(tibble::tibble())
+                    }
+
+                    purrr::map_dfr(
+                        items,
+                        function(item) {
+                            tibble::tibble(
+                                student_id = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "student",
+                                        "id",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                student_name = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "student",
+                                        "name",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                attempt_number = as.integer(
+                                    purrr::pluck(
+                                        item,
+                                        "attemptNumber",
+                                        .default = parent_attempt_number
+                                    )
+                                ),
+                                question_number = as.integer(
+                                    purrr::pluck(
+                                        item,
+                                        "questionNumber",
+                                        .default = parent_question_number
+                                    )
+                                ),
+                                question_id = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "question",
+                                        "id",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                question_text = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "question",
+                                        "questionText",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                difficulty = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "question",
+                                        "difficultyLevel",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                weight = as.numeric(
+                                    purrr::pluck(
+                                        item,
+                                        "question",
+                                        "weight",
+                                        .default = NA_real_
+                                    )
+                                ),
+                                answer_key = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "question",
+                                        "correctAnswer",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                is_correct = as.logical(
+                                    purrr::pluck(
+                                        item,
+                                        "answer",
+                                        "isCorrect",
+                                        .default = NA
+                                    )
+                                ),
+                                initial_level = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "initialLevel",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                final_level = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "finalLevel",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                selection_level = as.character(
+                                    purrr::pluck(
+                                        item,
+                                        "selection",
+                                        "currentLevel",
+                                        .default = NA_character_
+                                    )
+                                ),
+                                candidate_count = as.integer(
+                                    purrr::pluck(
+                                        item,
+                                        "selection",
+                                        "candidateCount",
+                                        .default = NA_integer_
+                                    )
+                                ),
+                                wrs_total_weight = as.numeric(
+                                    purrr::pluck(
+                                        item,
+                                        "selection",
+                                        "totalWeight",
+                                        .default = NA_real_
+                                    )
+                                ),
+                                random_value = as.numeric(
+                                    purrr::pluck(
+                                        item,
+                                        "selection",
+                                        "randomValue",
+                                        .default = NA_real_
+                                    )
+                                )
+                            )
+                        }
+                    )
+                }
+            )
+        }
+    )
+
+    if (nrow(tryout_rows) == 0) {
+        stop(
+            paste(
+                "Tidak ada data item tryout",
+                "yang berhasil dibaca dari JSON."
+            )
         )
-    ),
-    is_correct = parse_boolean(
-        get_column_value(
-            tryout_raw,
-            is_correct_column
-        )
-    ),
-    initial_level = normalize_level(
-        get_column_value(
-            tryout_raw,
-            initial_level_column
-        )
-    ),
-    final_level = normalize_level(
-        get_column_value(
-            tryout_raw,
-            final_level_column
+    }
+
+    total_questions <- as.integer(
+        purrr::pluck(
+            raw_json,
+            "tryout",
+            "totalQuestions",
+            .default = max(
+                tryout_rows$question_number,
+                na.rm = TRUE
+            )
         )
     )
+
+    available_attempts <- purrr::pluck(
+        raw_json,
+        "availableAttempts",
+        .default = sort(
+            unique(
+                tryout_rows$attempt_number
+            )
+        )
+    ) |>
+        unlist(use.names = FALSE) |>
+        as.integer()
+
+    metadata <- tibble::tibble(
+        tryout_id = as.character(
+            purrr::pluck(
+                raw_json,
+                "tryout",
+                "id",
+                .default = NA_character_
+            )
+        ),
+        tryout_title = as.character(
+            purrr::pluck(
+                raw_json,
+                "tryout",
+                "title",
+                .default = NA_character_
+            )
+        ),
+        bank_name = as.character(
+            purrr::pluck(
+                raw_json,
+                "tryout",
+                "bankName",
+                .default = NA_character_
+            )
+        ),
+        total_questions = total_questions,
+        total_attempts = length(
+            unique(available_attempts)
+        ),
+        available_attempts = paste(
+            sort(unique(available_attempts)),
+            collapse = ","
+        ),
+        generated_at = as.character(
+            purrr::pluck(
+                raw_json,
+                "generatedAt",
+                .default = NA_character_
+            )
+        ),
+        source = as.character(
+            purrr::pluck(
+                raw_json,
+                "source",
+                .default = NA_character_
+            )
+        )
+    )
+
+    message(
+        "Jumlah baris tryout dari JSON: ",
+        nrow(tryout_rows)
+    )
+
+    message(
+        "Jumlah percobaan dari JSON: ",
+        dplyr::n_distinct(
+            tryout_rows$attempt_number
+        )
+    )
+
+    message(
+        "Jumlah siswa dari JSON: ",
+        dplyr::n_distinct(
+            tryout_rows$student_id
+        )
+    )
+
+    list(
+        data = tryout_rows,
+        metadata = metadata,
+        total_questions = total_questions,
+        available_attempts = available_attempts
+    )
+}
+
+# ============================================================
+# MEMBACA DAN MEMBERSIHKAN DATA TRYOUT
+# ============================================================
+
+tryout_json <- read_tryout_json(
+    TRYOUT_FILE
 )
 
+tryout_raw <- tryout_json$data |>
+    janitor::clean_names()
 
-# ============================================================
-# FILTER DATA TRYOUT VALID
-# ============================================================
+tryout_metadata <- tryout_json$metadata
+TOTAL_QUESTIONS <- tryout_json$total_questions
+AVAILABLE_ATTEMPTS <- tryout_json$available_attempts
 
-tryout_clean <- tryout_clean |>
+if (
+    is.na(TOTAL_QUESTIONS) ||
+        TOTAL_QUESTIONS <= 0
+) {
+    stop("Jumlah soal pada metadata JSON tidak valid.")
+}
+
+message("\nKolom data tryout JSON:")
+print(names(tryout_raw))
+
+tryout_clean <- tryout_raw |>
+    dplyr::transmute(
+        student_id = as.character(student_id),
+        student_name = stringr::str_squish(
+            as.character(student_name)
+        ),
+        attempt_number = as.integer(
+            attempt_number
+        ),
+        question_number = as.integer(
+            question_number
+        ),
+        question_id = as.character(
+            question_id
+        ),
+        question_text = stringr::str_squish(
+            as.character(question_text)
+        ),
+        difficulty = normalize_level(
+            difficulty
+        ),
+        weight = as.numeric(weight),
+        answer_key = stringr::str_to_upper(
+            stringr::str_squish(
+                as.character(answer_key)
+            )
+        ),
+        is_correct = parse_boolean(
+            is_correct
+        ),
+        initial_level = normalize_level(
+            initial_level
+        ),
+        final_level = normalize_level(
+            final_level
+        ),
+        selection_level = normalize_level(
+            selection_level
+        ),
+        candidate_count = as.integer(
+            candidate_count
+        ),
+        wrs_total_weight = as.numeric(
+            wrs_total_weight
+        ),
+        random_value = as.numeric(
+            random_value
+        )
+    ) |>
     dplyr::filter(
         !is.na(student_name),
         student_name != "",
         !is.na(attempt_number),
-        attempt_number %in% c(1, 2),
+        attempt_number %in% TARGET_ATTEMPTS,
         !is.na(question_number),
-        question_number %in% 1:15,
-
-        # Menghapus baris percobaan yang sebenarnya kosong
+        question_number >= 1,
+        question_number <= TOTAL_QUESTIONS,
         !is.na(question_text),
         question_text != "",
         !is.na(difficulty),
         !is.na(weight)
-    )
-
-
-# ============================================================
-# MENGELUARKAN DIAN MEYLANI PRATIWI
-# ============================================================
-
-tryout_clean <- tryout_clean |>
+    ) |>
     dplyr::filter(
         normalize_key(student_name) !=
             normalize_key(
-                "Dian Meylani Pratiwi"
+                EXCLUDED_STUDENT_NAME
             )
-    )
-
-
-# ============================================================
-# MEMBUAT KUNCI IDENTITAS SISWA
-# ============================================================
-
-tryout_clean <- tryout_clean |>
+    ) |>
     dplyr::mutate(
         student_key = dplyr::if_else(
             !is.na(student_id) &
@@ -681,16 +606,11 @@ tryout_clean <- tryout_clean |>
         )
     )
 
-
-# ============================================================
-# MEMBUAT ID SOAL OTOMATIS JIKA KOSONG
-# ============================================================
-
+# Membuat ID soal otomatis apabila kosong.
 missing_question_id <- is.na(
     tryout_clean$question_id
 ) |
     tryout_clean$question_id == ""
-
 
 generated_question_ids <- paste0(
     "AUTO_Q",
@@ -705,13 +625,11 @@ generated_question_ids <- paste0(
     )
 )
 
-
 tryout_clean$question_id[
     missing_question_id
 ] <- generated_question_ids[
     missing_question_id
 ]
-
 
 # ============================================================
 # AUDIT DUPLIKASI POSISI SOAL
@@ -729,11 +647,7 @@ duplicate_position_audit <- tryout_clean |>
         duplicate_count > 1
     )
 
-
-# ============================================================
-# MENYISAKAN SATU BARIS PER POSISI SOAL
-# ============================================================
-
+# Menyisakan satu baris per siswa, percobaan, dan nomor soal.
 tryout_clean <- tryout_clean |>
     dplyr::arrange(
         student_name,
@@ -746,9 +660,8 @@ tryout_clean <- tryout_clean |>
         question_number,
         .keep_all = TRUE
     )
-# Menghitung total weight yang diterima setiap siswa
-# dalam satu percobaan
 
+# Menghitung total bobot dalam satu sesi siswa.
 tryout_clean <- tryout_clean |>
     dplyr::group_by(
         student_key,
@@ -770,6 +683,60 @@ tryout_clean <- tryout_clean |>
         )
     ) |>
     dplyr::ungroup()
+
+# ============================================================
+# AUDIT KETERSEDIAAN LOG INTERNAL WRS
+# ============================================================
+
+wrs_log_columns <- c(
+    "selection_level",
+    "candidate_count",
+    "wrs_total_weight",
+    "random_value"
+)
+
+complete_wrs_rows <- sum(
+    stats::complete.cases(
+        tryout_clean[
+            wrs_log_columns
+        ]
+    )
+)
+
+wrs_log_availability <- tibble::tibble(
+    total_tryout_rows = nrow(
+        tryout_clean
+    ),
+    complete_wrs_rows = complete_wrs_rows,
+    wrs_log_coverage_percentage =
+        if (nrow(tryout_clean) > 0) {
+            complete_wrs_rows /
+                nrow(tryout_clean) *
+                100
+        } else {
+            0
+        },
+    selection_level_non_missing = sum(
+        !is.na(
+            tryout_clean$selection_level
+        )
+    ),
+    candidate_count_non_missing = sum(
+        !is.na(
+            tryout_clean$candidate_count
+        )
+    ),
+    wrs_total_weight_non_missing = sum(
+        !is.na(
+            tryout_clean$wrs_total_weight
+        )
+    ),
+    random_value_non_missing = sum(
+        !is.na(
+            tryout_clean$random_value
+        )
+    )
+)
 
 # ============================================================
 # AUDIT KELENGKAPAN SESI TRYOUT
@@ -805,14 +772,15 @@ session_audit <- tryout_clean |>
         .groups = "drop"
     ) |>
     dplyr::mutate(
+        expected_questions = TOTAL_QUESTIONS,
         complete_session =
-            unique_question_numbers == 15 &
+            unique_question_numbers ==
+                expected_questions &
                 missing_answers == 0
     )
 
-
 # ============================================================
-# AUDIT KEMUNGKINAN NAMA GANDA
+# AUDIT IDENTITAS NAMA
 # ============================================================
 
 potential_name_duplicates <- tryout_clean |>
@@ -832,9 +800,153 @@ potential_name_duplicates <- tryout_clean |>
         name_count > 1
     )
 
+# ============================================================
+# RINGKASAN SISWA DARI DATA TRYOUT JSON
+# ============================================================
+
+ringkasan_siswa_clean <- tryout_clean |>
+    dplyr::group_by(
+        student_key,
+        student_id,
+        student_name,
+        attempt_number
+    ) |>
+    dplyr::summarise(
+        initial_level = first_non_missing(
+            initial_level,
+            NA_character_
+        ),
+        final_level = first_non_missing(
+            final_level,
+            NA_character_
+        ),
+        available_questions =
+            dplyr::n_distinct(
+                question_number
+            ),
+        correct_count = sum(
+            is_correct %in% TRUE,
+            na.rm = TRUE
+        ),
+        wrong_count = sum(
+            is_correct %in% FALSE,
+            na.rm = TRUE
+        ),
+        unanswered_count = sum(
+            is.na(is_correct)
+        ),
+        session_total_weight = sum(
+            weight,
+            na.rm = TRUE
+        ),
+        session_weight_correct = sum(
+            dplyr::if_else(
+                is_correct %in% TRUE,
+                weight,
+                0
+            ),
+            na.rm = TRUE
+        ),
+        .groups = "drop"
+    ) |>
+    dplyr::mutate(
+        unavailable_count = pmax(
+            TOTAL_QUESTIONS -
+                available_questions,
+            0L
+        ),
+        accuracy = dplyr::if_else(
+            available_questions > 0,
+            correct_count /
+                available_questions *
+                100,
+            NA_real_
+        ),
+        weighted_accuracy =
+            dplyr::if_else(
+                session_total_weight > 0,
+                session_weight_correct /
+                    session_total_weight *
+                    100,
+                NA_real_
+            )
+    )
 
 # ============================================================
-# MENYIMPAN DATA TRYOUT
+# RINGKASAN NOMOR SOAL DARI DATA TRYOUT JSON
+# ============================================================
+
+ringkasan_no_soal_clean <- tryout_clean |>
+    dplyr::group_by(
+        attempt_number,
+        question_number
+    ) |>
+    dplyr::summarise(
+        available_data = dplyr::n(),
+        total_students =
+            dplyr::n_distinct(
+                student_key
+            ),
+        correct_count = sum(
+            is_correct %in% TRUE,
+            na.rm = TRUE
+        ),
+        wrong_count = sum(
+            is_correct %in% FALSE,
+            na.rm = TRUE
+        ),
+        unanswered_count = sum(
+            is.na(is_correct)
+        ),
+        low_count = sum(
+            difficulty == "LOW",
+            na.rm = TRUE
+        ),
+        medium_count = sum(
+            difficulty == "MEDIUM",
+            na.rm = TRUE
+        ),
+        high_count = sum(
+            difficulty == "HIGH",
+            na.rm = TRUE
+        ),
+        total_selected_weight = sum(
+            weight,
+            na.rm = TRUE
+        ),
+        correct_selected_weight = sum(
+            dplyr::if_else(
+                is_correct %in% TRUE,
+                weight,
+                0
+            ),
+            na.rm = TRUE
+        ),
+        .groups = "drop"
+    ) |>
+    dplyr::mutate(
+        answered_count =
+            correct_count +
+                wrong_count,
+        accuracy = dplyr::if_else(
+            answered_count > 0,
+            correct_count /
+                answered_count *
+                100,
+            NA_real_
+        ),
+        weighted_accuracy =
+            dplyr::if_else(
+                total_selected_weight > 0,
+                correct_selected_weight /
+                    total_selected_weight *
+                    100,
+                NA_real_
+            )
+    )
+
+# ============================================================
+# MENYIMPAN DATA TRYOUT DAN AUDIT
 # ============================================================
 
 save_processed_csv(
@@ -842,18 +954,40 @@ save_processed_csv(
     "tryout_clean.csv"
 )
 
+save_processed_csv(
+    ringkasan_siswa_clean,
+    "ringkasan_siswa_clean.csv"
+)
+
+save_processed_csv(
+    ringkasan_no_soal_clean,
+    "ringkasan_no_soal_clean.csv"
+)
+
+save_processed_csv(
+    tryout_metadata,
+    "metadata_tryout.csv"
+)
+
+save_csv_table(
+    tryout_metadata,
+    "metadata_tryout.csv"
+)
+
+save_csv_table(
+    wrs_log_availability,
+    "audit_ketersediaan_log_wrs.csv"
+)
 
 save_csv_table(
     session_audit,
     "audit_sesi_tryout.csv"
 )
 
-
 save_csv_table(
     duplicate_position_audit,
     "audit_duplikasi_posisi_soal.csv"
 )
-
 
 save_csv_table(
     potential_name_duplicates,
@@ -861,124 +995,13 @@ save_csv_table(
 )
 
 # ============================================================
-# MEMBERSIHKAN RINGKASAN SISWA
-# ============================================================
-
-ringkasan_siswa_clean <- ringkasan_siswa_raw |>
-    dplyr::transmute(
-        student_name = stringr::str_squish(
-            as.character(nama_siswa)
-        ),
-        student_id = as.character(id_siswa),
-        attempt_number = as.integer(attempt),
-        initial_level = normalize_level(
-            level_awal
-        ),
-        final_level = normalize_level(
-            level_akhir
-        ),
-        available_questions = as.integer(
-            soal_tersedia
-        ),
-        correct_count = as.integer(benar),
-        wrong_count = as.integer(salah),
-        unavailable_count = as.integer(
-            tidak_ada_data
-        ),
-        accuracy = as.numeric(
-            percent_benar
-        ) * 100,
-        session_total_weight = as.numeric(
-            total_weight
-        ),
-        session_weight_correct = as.numeric(
-            weight_benar
-        ),
-        weighted_accuracy = as.numeric(
-            percent_weight_benar
-        ) * 100
-    ) |>
-    dplyr::filter(
-        !is.na(student_name),
-        student_name != "",
-        normalize_key(student_name) !=
-            normalize_key(
-                "Dian Meylani Pratiwi"
-            )
-    ) |>
-    dplyr::mutate(
-        student_key = dplyr::if_else(
-            !is.na(student_id) &
-                student_id != "",
-            normalize_key(student_id),
-            normalize_key(student_name)
-        )
-    )
-
-
-save_processed_csv(
-    ringkasan_siswa_clean,
-    "ringkasan_siswa_clean.csv"
-)
-# ============================================================
-# MEMBERSIHKAN RINGKASAN NOMOR SOAL
-# ============================================================
-
-ringkasan_no_soal_clean <- ringkasan_no_soal_raw |>
-    dplyr::transmute(
-        question_number = as.integer(
-            no_soal
-        ),
-        attempt_number = as.integer(
-            attempt
-        ),
-        available_data = as.integer(
-            data_tersedia
-        ),
-        correct_count = as.integer(benar),
-        wrong_count = as.integer(salah),
-        accuracy = as.numeric(akurasi) * 100,
-        low_count = as.integer(level_low),
-        medium_count = as.integer(
-            level_medium
-        ),
-        high_count = as.integer(
-            level_high
-        ),
-        total_selected_weight = as.numeric(
-            total_weight
-        ),
-        correct_selected_weight = as.numeric(
-            weight_benar
-        ),
-        weighted_accuracy = as.numeric(
-            percent_weight_benar
-        ) * 100
-    ) |>
-    dplyr::filter(
-        !is.na(question_number),
-        question_number %in% 1:15,
-        attempt_number %in% c(1, 2)
-    )
-
-
-save_processed_csv(
-    ringkasan_no_soal_clean,
-    "ringkasan_no_soal_clean.csv"
-)
-
-# ============================================================
-# FUNGSI PARSING SKALA LIKERT
+# FUNGSI PEMBERSIHAN KUESIONER SISWA
 # ============================================================
 
 parse_likert <- function(x) {
     if (is.numeric(x)) {
         result <- as.numeric(x)
-
-        result[
-            !result %in% 1:5
-        ] <- NA_real_
-
+        result[!result %in% 1:5] <- NA_real_
         return(result)
     }
 
@@ -1004,17 +1027,9 @@ parse_likert <- function(x) {
         extracted_number
     )
 
-    result[
-        !result %in% 1:5
-    ] <- NA_real_
-
+    result[!result %in% 1:5] <- NA_real_
     result
 }
-
-
-# ============================================================
-# FUNGSI MENDETEKSI KOLOM LIKERT
-# ============================================================
 
 detect_likert_columns <- function(data) {
     q_columns <- names(data)[
@@ -1038,6 +1053,7 @@ detect_likert_columns <- function(data) {
             ]
         )
     }
+
     excluded_pattern <- paste(
         c(
             "timestamp",
@@ -1068,7 +1084,7 @@ detect_likert_columns <- function(data) {
         )
     ]
 
-    detected <- candidate_columns[
+    candidate_columns[
         vapply(
             candidate_columns,
             function(column_name) {
@@ -1077,9 +1093,7 @@ detect_likert_columns <- function(data) {
                 )
 
                 original_non_missing <- sum(
-                    !is.na(
-                        data[[column_name]]
-                    ) &
+                    !is.na(data[[column_name]]) &
                         as.character(
                             data[[column_name]]
                         ) != ""
@@ -1103,14 +1117,7 @@ detect_likert_columns <- function(data) {
             logical(1)
         )
     ]
-
-    detected
 }
-
-
-# ============================================================
-# FUNGSI PARSING TIMESTAMP
-# ============================================================
 
 parse_timestamp_column <- function(x) {
     if (inherits(x, "POSIXt")) {
@@ -1141,61 +1148,28 @@ parse_timestamp_column <- function(x) {
     )
 }
 
-
-# ============================================================
-# FUNGSI PEMBERSIHAN KUESIONER
-# ============================================================
-
-clean_questionnaire <- function(
+clean_student_questionnaire <- function(
   file_path,
-  respondent_type,
   reverse_items = character(0)
 ) {
     if (!file.exists(file_path)) {
         message(
-            "File kuesioner tidak ditemukan dan dilewati: ",
+            "File kuesioner siswa tidak ditemukan dan dilewati: ",
             file_path
         )
 
         return(NULL)
     }
 
-    if (respondent_type == "siswa") {
-        # Hanya membaca tabel respons siswa.
-        # Baris 4 adalah header dan baris 5–40 adalah 36 respons.
-        raw_data <- readxl::read_excel(
-            file_path,
-            sheet = "Kuesioner",
-            range = "A4:AB40"
-        ) |>
-            janitor::clean_names()
-    } else {
-        raw_data <- read_excel_automatically(
-            file_path,
-            preferred_sheets = c(
-                "form_responses_1",
-                "jawaban_formulir_1",
-                "kuesioner",
-                "data",
-                "sheet1"
-            )
-        )
-    }
+    raw_data <- readxl::read_excel(
+        file_path,
+        sheet = "Kuesioner",
+        range = "A4:AB40"
+    ) |>
+        janitor::clean_names()
 
-    message(
-        "\nKolom kuesioner ",
-        respondent_type,
-        ":"
-    )
-
-    print(
-        names(raw_data)
-    )
-
-
-    # --------------------------------------------------------
-    # Mendeteksi kolom identitas
-    # --------------------------------------------------------
+    message("\nKolom kuesioner siswa:")
+    print(names(raw_data))
 
     timestamp_column <- find_column(
         raw_data,
@@ -1209,7 +1183,6 @@ clean_questionnaire <- function(
         )
     )
 
-
     email_column <- find_column(
         raw_data,
         c(
@@ -1219,7 +1192,6 @@ clean_questionnaire <- function(
         )
     )
 
-
     name_column <- find_column(
         raw_data,
         c(
@@ -1227,11 +1199,11 @@ clean_questionnaire <- function(
             "name",
             "nama_lengkap",
             "nama_siswa",
-            "nama_guru",
             "responden"
-        )
+        ),
+        required = TRUE,
+        label = "nama responden"
     )
-
 
     class_column <- find_column(
         raw_data,
@@ -1242,7 +1214,6 @@ clean_questionnaire <- function(
         )
     )
 
-
     school_column <- find_column(
         raw_data,
         c(
@@ -1251,11 +1222,6 @@ clean_questionnaire <- function(
             "nama_sekolah"
         )
     )
-
-
-    # --------------------------------------------------------
-    # Mendeteksi item Likert
-    # --------------------------------------------------------
 
     likert_columns <- detect_likert_columns(
         raw_data
@@ -1268,7 +1234,6 @@ clean_questionnaire <- function(
         )
     }
 
-
     item_names <- paste0(
         "item_",
         sprintf(
@@ -1277,19 +1242,15 @@ clean_questionnaire <- function(
         )
     )
 
-
     item_mapping <- tibble::tibble(
         item = item_names,
-        original_column =
+        original_column = likert_columns,
+        statement = stringr::str_replace_all(
             likert_columns,
-        statement =
-            stringr::str_replace_all(
-                likert_columns,
-                "_",
-                " "
-            )
+            "_",
+            " "
+        )
     )
-
 
     item_data <- purrr::map_dfc(
         likert_columns,
@@ -1304,16 +1265,10 @@ clean_questionnaire <- function(
 
     names(item_data) <- item_names
 
-
-    # --------------------------------------------------------
-    # Membentuk data identitas responden
-    # --------------------------------------------------------
-
     timestamp_value <- get_column_value(
         raw_data,
         timestamp_column
     )
-
 
     questionnaire_clean <- tibble::tibble(
         original_row = seq_len(
@@ -1322,69 +1277,51 @@ clean_questionnaire <- function(
         timestamp = parse_timestamp_column(
             timestamp_value
         ),
-        respondent_name =
+        respondent_name = stringr::str_squish(
+            as.character(
+                get_column_value(
+                    raw_data,
+                    name_column
+                )
+            )
+        ),
+        email = stringr::str_to_lower(
             stringr::str_squish(
                 as.character(
                     get_column_value(
                         raw_data,
-                        name_column
-                    )
-                )
-            ),
-        email =
-            stringr::str_to_lower(
-                stringr::str_squish(
-                    as.character(
-                        get_column_value(
-                            raw_data,
-                            email_column
-                        )
-                    )
-                )
-            ),
-        class =
-            stringr::str_squish(
-                as.character(
-                    get_column_value(
-                        raw_data,
-                        class_column
-                    )
-                )
-            ),
-        school =
-            stringr::str_squish(
-                as.character(
-                    get_column_value(
-                        raw_data,
-                        school_column
+                        email_column
                     )
                 )
             )
+        ),
+        class = stringr::str_squish(
+            as.character(
+                get_column_value(
+                    raw_data,
+                    class_column
+                )
+            )
+        ),
+        school = stringr::str_squish(
+            as.character(
+                get_column_value(
+                    raw_data,
+                    school_column
+                )
+            )
+        )
     ) |>
         dplyr::bind_cols(
             item_data
-        )
-
-
-    # --------------------------------------------------------
-    # Mengeluarkan Dian Meylani Pratiwi
-    # --------------------------------------------------------
-
-    questionnaire_clean <- questionnaire_clean |>
+        ) |>
         dplyr::filter(
             is.na(respondent_name) |
                 normalize_key(respondent_name) !=
                     normalize_key(
-                        "Dian Meylani Pratiwi"
+                        EXCLUDED_STUDENT_NAME
                     )
-        )
-
-
-    # --------------------------------------------------------
-    # Membuat identitas responden
-    # --------------------------------------------------------
-
-    questionnaire_clean <- questionnaire_clean |>
+        ) |>
         dplyr::mutate(
             respondent_key =
                 dplyr::case_when(
@@ -1397,13 +1334,11 @@ clean_questionnaire <- function(
                             respondent_name
                         ),
                     TRUE ~ paste0(
-                        respondent_type,
-                        "_row_",
+                        "siswa_row_",
                         original_row
                     )
                 )
         )
-
 
     item_columns <- names(
         questionnaire_clean
@@ -1414,11 +1349,6 @@ clean_questionnaire <- function(
         )
     ]
 
-
-    # --------------------------------------------------------
-    # Mendeteksi respons dengan semua jawaban angka 1
-    # --------------------------------------------------------
-
     non_missing_count <- rowSums(
         !is.na(
             questionnaire_clean[
@@ -1427,7 +1357,6 @@ clean_questionnaire <- function(
         )
     )
 
-
     one_count <- rowSums(
         questionnaire_clean[
             item_columns
@@ -1435,27 +1364,21 @@ clean_questionnaire <- function(
         na.rm = TRUE
     )
 
-
     questionnaire_clean <- questionnaire_clean |>
         dplyr::mutate(
-            # Respons siswa dianggap valid apabila semua 20 item terisi
             valid_response =
                 non_missing_count ==
                     length(item_columns),
             all_one_response =
                 non_missing_count > 0 &
-                    one_count == non_missing_count
+                    one_count ==
+                        non_missing_count
         ) |>
         dplyr::filter(
             valid_response,
             !is.na(respondent_name),
             respondent_name != ""
-        )
-    # --------------------------------------------------------
-    # Mengurutkan respons dan mendeteksi pengisian ganda
-    # --------------------------------------------------------
-
-    questionnaire_clean <- questionnaire_clean |>
+        ) |>
         dplyr::mutate(
             timestamp_sort =
                 dplyr::coalesce(
@@ -1483,20 +1406,10 @@ clean_questionnaire <- function(
         ) |>
         dplyr::ungroup()
 
-
-    # --------------------------------------------------------
-    # Audit seluruh respons ganda
-    # --------------------------------------------------------
-
     duplicate_audit <- questionnaire_clean |>
         dplyr::filter(
             duplicate_count > 1
         )
-
-
-    # --------------------------------------------------------
-    # Audit respons dengan semua jawaban angka 1
-    # --------------------------------------------------------
 
     all_one_audit <- questionnaire_clean |>
         dplyr::filter(
@@ -1518,10 +1431,6 @@ clean_questionnaire <- function(
             )
         )
 
-
-    # --------------------------------------------------------
-    # Mempertahankan jawaban terakhir responden
-    # --------------------------------------------------------
     questionnaire_final <- questionnaire_clean |>
         dplyr::filter(
             kept_record
@@ -1532,15 +1441,10 @@ clean_questionnaire <- function(
             -valid_response
         )
 
-    # --------------------------------------------------------
-    # Reverse scoring untuk pernyataan negatif
-    # --------------------------------------------------------
-
     valid_reverse_items <- intersect(
         reverse_items,
         item_columns
     )
-
 
     if (length(valid_reverse_items) > 0) {
         questionnaire_final <-
@@ -1555,55 +1459,25 @@ clean_questionnaire <- function(
             )
     }
 
-
-    # --------------------------------------------------------
-    # Menyimpan hasil
-    # --------------------------------------------------------
-
-    file_prefix <- paste0(
-        "kuesioner_",
-        respondent_type
-    )
-
-
     save_processed_csv(
         questionnaire_final,
-        paste0(
-            file_prefix,
-            "_clean.csv"
-        )
+        "kuesioner_siswa_clean.csv"
     )
-
 
     save_csv_table(
         duplicate_audit,
-        paste0(
-            "audit_duplikasi_",
-            file_prefix,
-            ".csv"
-        )
+        "audit_duplikasi_kuesioner_siswa.csv"
     )
-
 
     save_csv_table(
         all_one_audit,
-        paste0(
-            "audit_semua_jawaban_satu_",
-            file_prefix,
-            ".csv"
-        )
+        "audit_semua_jawaban_satu_kuesioner_siswa.csv"
     )
-
 
     save_csv_table(
         item_mapping,
-        paste0(
-            "pemetaan_item_",
-            file_prefix,
-            ".csv"
-        )
+        "pemetaan_item_kuesioner_siswa.csv"
     )
-
 
     list(
         clean = questionnaire_final,
@@ -1613,73 +1487,37 @@ clean_questionnaire <- function(
     )
 }
 
-
-# ============================================================
-# MEMBERSIHKAN KUESIONER SISWA
-# ============================================================
-
-student_questionnaire <- clean_questionnaire(
+student_questionnaire <- clean_student_questionnaire(
     STUDENT_QUESTIONNAIRE_FILE,
-    respondent_type = "siswa",
-    reverse_items =
-        REVERSE_ITEMS_STUDENT
+    reverse_items = REVERSE_ITEMS_STUDENT
 )
 
-
 # ============================================================
-# MEMBERSIHKAN KUESIONER GURU
-# ============================================================
-
-teacher_questionnaire <- clean_questionnaire(
-    TEACHER_QUESTIONNAIRE_FILE,
-    respondent_type = "guru",
-    reverse_items =
-        REVERSE_ITEMS_TEACHER
-)
-
-
-# ============================================================
-# MEMBUAT RINGKASAN PEMBERSIHAN DATA
+# RINGKASAN PEMBERSIHAN DATA
 # ============================================================
 
 cleaning_summary <- tibble::tibble(
     data_name = c(
         "Tryout",
-        "Kuesioner siswa",
-        "Kuesioner guru"
+        "Kuesioner siswa"
     ),
     total_clean_rows = c(
         nrow(tryout_clean),
         if (is.null(student_questionnaire)) {
-            0
+            0L
         } else {
             nrow(
                 student_questionnaire$clean
             )
-        },
-        if (is.null(teacher_questionnaire)) {
-            0
-        } else {
-            nrow(
-                teacher_questionnaire$clean
-            )
         }
     ),
-    total_duplicate_responses = c(
-        NA_integer_,
+    total_duplicate_records = c(
+        nrow(duplicate_position_audit),
         if (is.null(student_questionnaire)) {
-            0
+            0L
         } else {
             nrow(
                 student_questionnaire$
-                    duplicate_audit
-            )
-        },
-        if (is.null(teacher_questionnaire)) {
-            0
-        } else {
-            nrow(
-                teacher_questionnaire$
                     duplicate_audit
             )
         }
@@ -1687,30 +1525,20 @@ cleaning_summary <- tibble::tibble(
     total_all_one_responses = c(
         NA_integer_,
         if (is.null(student_questionnaire)) {
-            0
+            0L
         } else {
             nrow(
                 student_questionnaire$
-                    all_one_audit
-            )
-        },
-        if (is.null(teacher_questionnaire)) {
-            0
-        } else {
-            nrow(
-                teacher_questionnaire$
                     all_one_audit
             )
         }
     )
 )
 
-
 save_csv_table(
     cleaning_summary,
     "ringkasan_pembersihan_data.csv"
 )
-
 
 # ============================================================
 # INFORMASI HASIL
@@ -1725,6 +1553,21 @@ message("")
 message(
     "Jumlah baris tryout bersih: ",
     nrow(tryout_clean)
+)
+
+message(
+    "Jumlah baris dengan log WRS lengkap: ",
+    complete_wrs_rows
+)
+
+message(
+    "Persentase cakupan log WRS: ",
+    round(
+        wrs_log_availability$
+            wrs_log_coverage_percentage[[1]],
+        2
+    ),
+    "%"
 )
 
 message(
@@ -1753,7 +1596,7 @@ message("")
 message(
     "Jumlah responden siswa bersih: ",
     if (is.null(student_questionnaire)) {
-        0
+        0L
     } else {
         nrow(
             student_questionnaire$clean
@@ -1761,29 +1604,16 @@ message(
     }
 )
 
-message(
-    "Jumlah responden guru bersih: ",
-    if (is.null(teacher_questionnaire)) {
-        0
-    } else {
-        nrow(
-            teacher_questionnaire$clean
-        )
-    }
-)
-
 message("")
 message(
-    "Data Dian Meylani Pratiwi telah dikeluarkan."
+    "Data ",
+    EXCLUDED_STUDENT_NAME,
+    " telah dikeluarkan."
 )
-
 message(
     "Respons kuesioner ganda mempertahankan isian terakhir."
 )
-
 message(
     "Respons dengan seluruh jawaban angka 1 disimpan dalam file audit."
 )
-
-message("")
 message("================================================")

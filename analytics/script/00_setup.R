@@ -15,6 +15,7 @@ options(
 
 packages <- c(
     "here",
+    "jsonlite",
     "readxl",
     "readr",
     "dplyr",
@@ -44,11 +45,13 @@ if (length(missing_packages) > 0) {
     install.packages(missing_packages)
 }
 
-invisible(
-    lapply(
-        packages,
-        library,
-        character.only = TRUE
+suppressPackageStartupMessages(
+    invisible(
+        lapply(
+            packages,
+            library,
+            character.only = TRUE
+        )
     )
 )
 
@@ -76,8 +79,8 @@ invisible(
 # Pengaturan grafik
 # ------------------------------------------------------------
 
-theme_set(
-    theme_minimal(base_size = 12)
+ggplot2::theme_set(
+    ggplot2::theme_minimal(base_size = 12)
 )
 
 set.seed(123)
@@ -94,8 +97,21 @@ normalize_key <- function(x) {
         stringr::str_replace_all("[^a-z0-9]+", "")
 }
 
+first_non_missing <- function(
+  x,
+  default = NA
+) {
+    valid_values <- x[!is.na(x)]
+
+    if (length(valid_values) == 0) {
+        return(default)
+    }
+
+    valid_values[[1]]
+}
+
 save_csv_table <- function(data, file_name) {
-    output_path <- here(
+    output_path <- here::here(
         "analytics",
         "output",
         "tables",
@@ -114,7 +130,7 @@ save_csv_table <- function(data, file_name) {
 }
 
 save_processed_csv <- function(data, file_name) {
-    output_path <- here(
+    output_path <- here::here(
         "analytics",
         "data",
         "processed",
@@ -138,7 +154,7 @@ save_figure <- function(
   width = 10,
   height = 6
 ) {
-    output_path <- here(
+    output_path <- here::here(
         "analytics",
         "output",
         "figures",
@@ -160,6 +176,6 @@ save_figure <- function(
 
 message("================================================")
 message("Setup R berhasil dijalankan.")
-message("Folder proyek: ", here())
+message("Folder proyek: ", here::here())
 message("Seluruh paket analisis tersedia.")
 message("================================================")

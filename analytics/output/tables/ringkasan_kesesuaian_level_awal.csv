@@ -1,3 +1,3 @@
-attempt_number,total_sessions,matching_sessions,non_matching_sessions,matching_percentage
-1,35,35,0,100
-2,32,32,0,100
+attempt_number,total_sessions,matching_sessions,non_matching_sessions,missing_comparison_sessions,matching_percentage
+1,35,35,0,0,100
+2,32,32,0,0,100

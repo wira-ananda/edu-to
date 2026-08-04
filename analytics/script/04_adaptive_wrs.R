@@ -3,16 +3,8 @@
 # Analisis tryout adaptif, variasi soal, bobot, dan WRS
 # ============================================================
 
-
-# ============================================================
-# MEMANGGIL SETUP
-# Dapat dijalankan dari root proyek maupun folder script
-# ============================================================
-
 SETUP_FILE <- if (
-    file.exists(
-        "analytics/script/00_setup.R"
-    )
+    file.exists("analytics/script/00_setup.R")
 ) {
     "analytics/script/00_setup.R"
 } else if (
@@ -20,25 +12,24 @@ SETUP_FILE <- if (
 ) {
     "00_setup.R"
 } else {
-    stop(
-        "File 00_setup.R tidak ditemukan."
-    )
+    stop("File 00_setup.R tidak ditemukan.")
 }
 
 source(SETUP_FILE)
 
-
-# ============================================================
-# KONFIGURASI FILE
-# ============================================================
-
-TRYOUT_FILE <- here(
+TRYOUT_FILE <- here::here(
     "analytics",
     "data",
     "processed",
     "tryout_clean.csv"
 )
 
+METADATA_FILE <- here::here(
+    "analytics",
+    "data",
+    "processed",
+    "metadata_tryout.csv"
+)
 
 if (!file.exists(TRYOUT_FILE)) {
     stop(
@@ -46,11 +37,6 @@ if (!file.exists(TRYOUT_FILE)) {
         "Jalankan 01_import_clean.R terlebih dahulu."
     )
 }
-
-
-# ============================================================
-# FUNGSI BANTUAN
-# ============================================================
 
 parse_logical_value <- function(x) {
     if (is.logical(x)) {
@@ -81,20 +67,10 @@ parse_logical_value <- function(x) {
     )
 }
 
-
-# ============================================================
-# MEMBACA DATA TRYOUT
-# ============================================================
-
 tryout_data <- readr::read_csv(
     TRYOUT_FILE,
     show_col_types = FALSE
 )
-
-
-# ============================================================
-# VALIDASI KOLOM WAJIB
-# ============================================================
 
 required_columns <- c(
     "student_key",
@@ -110,12 +86,10 @@ required_columns <- c(
     "final_level"
 )
 
-
 missing_columns <- setdiff(
     required_columns,
     names(tryout_data)
 )
-
 
 if (length(missing_columns) > 0) {
     stop(
@@ -127,51 +101,121 @@ if (length(missing_columns) > 0) {
     )
 }
 
+optional_wrs_columns <- c(
+    "selection_level",
+    "candidate_count",
+    "wrs_total_weight",
+    "random_value"
+)
 
-# ============================================================
-# NORMALISASI TIPE DATA
-# ============================================================
+missing_wrs_columns <- setdiff(
+    optional_wrs_columns,
+    names(tryout_data)
+)
+
+if (length(missing_wrs_columns) > 0) {
+    for (column_name in missing_wrs_columns) {
+        tryout_data[[column_name]] <- NA
+    }
+
+    message(
+        "Kolom log WRS tidak ditemukan: ",
+        paste(
+            missing_wrs_columns,
+            collapse = ", "
+        )
+    )
+}
 
 tryout_data <- tryout_data |>
     dplyr::mutate(
-        student_key =
-            as.character(student_key),
-        student_name =
-            as.character(student_name),
-        attempt_number =
-            as.integer(attempt_number),
-        question_number =
-            as.integer(question_number),
-        question_id =
-            as.character(question_id),
-        question_text =
-            as.character(question_text),
-        difficulty =
-            stringr::str_to_upper(
-                as.character(difficulty)
-            ),
-        weight =
-            as.numeric(weight),
-        is_correct =
-            parse_logical_value(is_correct),
-        initial_level =
+        student_key = as.character(
+            student_key
+        ),
+        student_name = as.character(
+            student_name
+        ),
+        attempt_number = as.integer(
+            attempt_number
+        ),
+        question_number = as.integer(
+            question_number
+        ),
+        question_id = as.character(
+            question_id
+        ),
+        question_text = as.character(
+            question_text
+        ),
+        difficulty = stringr::str_to_upper(
+            as.character(difficulty)
+        ),
+        weight = as.numeric(weight),
+        is_correct = parse_logical_value(
+            is_correct
+        ),
+        initial_level = dplyr::na_if(
             stringr::str_to_upper(
                 as.character(initial_level)
             ),
-        final_level =
+            "NA"
+        ),
+        final_level = dplyr::na_if(
             stringr::str_to_upper(
                 as.character(final_level)
-            )
+            ),
+            "NA"
+        ),
+        selection_level = dplyr::na_if(
+            stringr::str_to_upper(
+                as.character(selection_level)
+            ),
+            "NA"
+        ),
+        candidate_count = as.integer(
+            candidate_count
+        ),
+        wrs_total_weight = as.numeric(
+            wrs_total_weight
+        ),
+        random_value = as.numeric(
+            random_value
+        )
     ) |>
     dplyr::filter(
-        attempt_number %in% c(1, 2),
-        question_number %in% 1:15,
+        !is.na(attempt_number),
+        attempt_number > 0,
+        !is.na(question_number),
+        question_number > 0,
         !is.na(student_key),
+        student_key != "",
         !is.na(question_id),
+        question_id != "",
         !is.na(difficulty),
         !is.na(weight)
     )
 
+TOTAL_QUESTIONS <- if (
+    file.exists(METADATA_FILE)
+) {
+    metadata <- readr::read_csv(
+        METADATA_FILE,
+        show_col_types = FALSE
+    )
+
+    as.integer(
+        metadata$total_questions[[1]]
+    )
+} else {
+    max(
+        tryout_data$question_number,
+        na.rm = TRUE
+    )
+}
+
+question_breaks <- seq_len(
+    TOTAL_QUESTIONS
+)
 
 message(
     "Jumlah baris data tryout yang dianalisis: ",
@@ -184,7 +228,6 @@ message(
         tryout_data$student_key
     )
 )
-
 
 # ============================================================
 # 1. URUTAN KESULITAN YANG DITERIMA SISWA
@@ -203,7 +246,9 @@ difficulty_sequence <- tryout_data |>
     ) |>
     dplyr::mutate(
         next_question_number =
-            dplyr::lead(question_number),
+            dplyr::lead(
+                question_number
+            ),
         next_difficulty =
             dplyr::lead(difficulty),
         next_question_id =
@@ -213,12 +258,10 @@ difficulty_sequence <- tryout_data |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     difficulty_sequence,
     "urutan_soal_dan_kesulitan_siswa.csv"
 )
-
 
 # ============================================================
 # 2. TRANSISI KESULITAN SETELAH JAWABAN
@@ -238,12 +281,11 @@ difficulty_transitions <- difficulty_sequence |>
                 TRUE ~
                     "Tidak dijawab"
             ),
-        transition =
-            paste0(
-                difficulty,
-                " → ",
-                next_difficulty
-            )
+        transition = paste0(
+            difficulty,
+            " → ",
+            next_difficulty
+        )
     ) |>
     dplyr::count(
         attempt_number,
@@ -266,12 +308,10 @@ difficulty_transitions <- difficulty_sequence |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     difficulty_transitions,
     "transisi_kesulitan_setelah_jawaban.csv"
 )
-
 
 # ============================================================
 # 3. RINGKASAN TRANSISI BERDASARKAN JAWABAN
@@ -341,12 +381,10 @@ answer_transition_summary <- difficulty_sequence |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     answer_transition_summary,
     "ringkasan_transisi_berdasarkan_jawaban.csv"
 )
-
 
 # ============================================================
 # 4. DISTRIBUSI KESULITAN BERDASARKAN NOMOR SOAL
@@ -371,15 +409,13 @@ difficulty_by_position <- tryout_data |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     difficulty_by_position,
     "distribusi_kesulitan_per_nomor.csv"
 )
 
-
 # ============================================================
-# 5. AKURASI BERDASARKAN KESULITAN DAN PERCOBAAN
+# 5. AKURASI BERDASARKAN KESULITAN
 # ============================================================
 
 difficulty_accuracy <- tryout_data |>
@@ -388,38 +424,39 @@ difficulty_accuracy <- tryout_data |>
         difficulty
     ) |>
     dplyr::summarise(
-        total_answers =
-            dplyr::n(),
-        correct_answers =
-            sum(
-                is_correct %in% TRUE,
-                na.rm = TRUE
-            ),
-        wrong_answers =
-            sum(
-                is_correct %in% FALSE,
-                na.rm = TRUE
-            ),
+        total_answers = dplyr::n(),
+        correct_answers = sum(
+            is_correct %in% TRUE,
+            na.rm = TRUE
+        ),
+        wrong_answers = sum(
+            is_correct %in% FALSE,
+            na.rm = TRUE
+        ),
+        unanswered_answers = sum(
+            is.na(is_correct)
+        ),
         accuracy_percent =
-            mean(
-                is_correct,
-                na.rm = TRUE
-            ) *
-                100,
-        mean_weight =
-            mean(
-                weight,
-                na.rm = TRUE
+            dplyr::if_else(
+                correct_answers +
+                    wrong_answers > 0,
+                correct_answers /
+                    (correct_answers +
+                        wrong_answers) *
+                    100,
+                NA_real_
             ),
+        mean_weight = mean(
+            weight,
+            na.rm = TRUE
+        ),
         .groups = "drop"
     )
-
 
 save_csv_table(
     difficulty_accuracy,
     "akurasi_kesulitan_adaptif.csv"
 )
-
 
 # ============================================================
 # 6. KESESUAIAN LEVEL AWAL DAN SOAL PERTAMA
@@ -436,9 +473,7 @@ first_question_check <- tryout_data |>
         student_name,
         attempt_number
     ) |>
-    dplyr::slice_head(
-        n = 1
-    ) |>
+    dplyr::slice_head(n = 1) |>
     dplyr::ungroup() |>
     dplyr::mutate(
         initial_level_matches_first_question =
@@ -446,48 +481,50 @@ first_question_check <- tryout_data |>
                 difficulty
     )
 
-
 first_question_summary <- first_question_check |>
     dplyr::group_by(
         attempt_number
     ) |>
     dplyr::summarise(
-        total_sessions =
-            dplyr::n(),
-        matching_sessions =
-            sum(
-                initial_level_matches_first_question,
-                na.rm = TRUE
-            ),
-        non_matching_sessions =
-            sum(
-                !initial_level_matches_first_question,
-                na.rm = TRUE
-            ),
+        total_sessions = dplyr::n(),
+        matching_sessions = sum(
+            initial_level_matches_first_question,
+            na.rm = TRUE
+        ),
+        non_matching_sessions = sum(
+            !initial_level_matches_first_question,
+            na.rm = TRUE
+        ),
+        missing_comparison_sessions = sum(
+            is.na(
+                initial_level_matches_first_question
+            )
+        ),
         matching_percentage =
-            mean(
-                initial_level_matches_first_question,
-                na.rm = TRUE
-            ) *
-                100,
+            dplyr::if_else(
+                matching_sessions +
+                    non_matching_sessions > 0,
+                matching_sessions /
+                    (matching_sessions +
+                        non_matching_sessions) *
+                    100,
+                NA_real_
+            ),
         .groups = "drop"
     )
-
 
 save_csv_table(
     first_question_check,
     "pemeriksaan_level_awal_dan_soal_pertama.csv"
 )
 
-
 save_csv_table(
     first_question_summary,
     "ringkasan_kesesuaian_level_awal.csv"
 )
 
-
 # ============================================================
-# 7. PERUBAHAN LEVEL AWAL DAN LEVEL AKHIR
+# 7. PERUBAHAN LEVEL AWAL DAN AKHIR
 # ============================================================
 
 session_level_change <- tryout_data |>
@@ -529,8 +566,8 @@ session_level_change <- tryout_data |>
             )
     )
 
-
-session_level_change_summary <- session_level_change |>
+session_level_change_summary <-
+    session_level_change |>
     dplyr::filter(
         !is.na(level_change_category)
     ) |>
@@ -550,21 +587,18 @@ session_level_change_summary <- session_level_change |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     session_level_change,
     "perubahan_level_setiap_sesi.csv"
 )
-
 
 save_csv_table(
     session_level_change_summary,
     "ringkasan_perubahan_level_adaptif.csv"
 )
 
-
 # ============================================================
-# 8. FREKUENSI SOAL YANG TERPILIH
+# 8. FREKUENSI SOAL TERPILIH
 # ============================================================
 
 question_frequency <- tryout_data |>
@@ -576,41 +610,42 @@ question_frequency <- tryout_data |>
         weight
     ) |>
     dplyr::summarise(
-        selection_count =
-            dplyr::n(),
+        selection_count = dplyr::n(),
         unique_students =
             dplyr::n_distinct(
                 student_key
             ),
-        correct_count =
-            sum(
-                is_correct %in% TRUE,
-                na.rm = TRUE
-            ),
-        wrong_count =
-            sum(
-                is_correct %in% FALSE,
-                na.rm = TRUE
-            ),
+        correct_count = sum(
+            is_correct %in% TRUE,
+            na.rm = TRUE
+        ),
+        wrong_count = sum(
+            is_correct %in% FALSE,
+            na.rm = TRUE
+        ),
         accuracy_percent =
-            mean(
-                is_correct,
-                na.rm = TRUE
-            ) *
-                100,
+            dplyr::if_else(
+                correct_count +
+                    wrong_count > 0,
+                correct_count /
+                    (correct_count +
+                        wrong_count) *
+                    100,
+                NA_real_
+            ),
         .groups = "drop"
     ) |>
     dplyr::arrange(
         attempt_number,
-        dplyr::desc(selection_count)
+        dplyr::desc(
+            selection_count
+        )
     )
-
 
 save_csv_table(
     question_frequency,
     "frekuensi_pemilihan_setiap_soal.csv"
 )
-
 
 # ============================================================
 # 9. FREKUENSI PEMILIHAN BERDASARKAN BOBOT
@@ -633,12 +668,10 @@ weight_selection <- tryout_data |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     weight_selection,
     "frekuensi_pemilihan_berdasarkan_bobot.csv"
 )
-
 
 # ============================================================
 # 10. AKURASI BERDASARKAN BOBOT
@@ -650,39 +683,39 @@ weight_accuracy <- tryout_data |>
         weight
     ) |>
     dplyr::summarise(
-        total_answers =
-            dplyr::n(),
-        correct_answers =
-            sum(
-                is_correct %in% TRUE,
-                na.rm = TRUE
-            ),
-        wrong_answers =
-            sum(
-                is_correct %in% FALSE,
-                na.rm = TRUE
-            ),
+        total_answers = dplyr::n(),
+        correct_answers = sum(
+            is_correct %in% TRUE,
+            na.rm = TRUE
+        ),
+        wrong_answers = sum(
+            is_correct %in% FALSE,
+            na.rm = TRUE
+        ),
         accuracy_percent =
-            mean(
-                is_correct,
-                na.rm = TRUE
-            ) *
-                100,
+            dplyr::if_else(
+                correct_answers +
+                    wrong_answers > 0,
+                correct_answers /
+                    (correct_answers +
+                        wrong_answers) *
+                    100,
+                NA_real_
+            ),
         .groups = "drop"
     )
-
 
 save_csv_table(
     weight_accuracy,
     "akurasi_pemilihan_berdasarkan_bobot.csv"
 )
 
-
 # ============================================================
 # 11. KORELASI BOBOT DAN FREKUENSI PEMILIHAN
 # ============================================================
 
-weight_frequency_correlation <- weight_selection |>
+weight_frequency_correlation <-
+    weight_selection |>
     dplyr::group_by(
         attempt_number
     ) |>
@@ -729,17 +762,13 @@ weight_frequency_correlation <- weight_selection |>
 
             interpretation <-
                 dplyr::case_when(
-                    abs(correlation_value) <
-                        0.20 ~
+                    abs(correlation_value) < 0.20 ~
                         "Sangat lemah",
-                    abs(correlation_value) <
-                        0.40 ~
+                    abs(correlation_value) < 0.40 ~
                         "Lemah",
-                    abs(correlation_value) <
-                        0.60 ~
+                    abs(correlation_value) < 0.60 ~
                         "Sedang",
-                    abs(correlation_value) <
-                        0.80 ~
+                    abs(correlation_value) < 0.80 ~
                         "Kuat",
                     TRUE ~
                         "Sangat kuat"
@@ -759,12 +788,10 @@ weight_frequency_correlation <- weight_selection |>
     ) |>
     dplyr::ungroup()
 
-
 save_csv_table(
     weight_frequency_correlation,
     "korelasi_bobot_dan_frekuensi.csv"
 )
-
 
 # ============================================================
 # 12. VARIASI SOAL ANTAR PESERTA
@@ -800,12 +827,10 @@ question_variation <- tryout_data |>
         .groups = "drop"
     )
 
-
 save_csv_table(
     question_variation,
     "variasi_soal_antar_peserta.csv"
 )
-
 
 # ============================================================
 # 13. AUDIT SOAL BERULANG DALAM SATU SESI
@@ -823,12 +848,10 @@ repeated_question_audit <- tryout_data |>
         repetition_count > 1
     )
 
-
 save_csv_table(
     repeated_question_audit,
     "audit_soal_berulang_dalam_sesi.csv"
 )
-
 
 # ============================================================
 # 14. KEMIRIPAN PAKET SOAL ANTAR SISWA
@@ -860,7 +883,6 @@ calculate_jaccard <- function(
         union_count
 }
 
-
 calculate_pairwise_jaccard <- function(data) {
     question_sets <- split(
         data$question_id,
@@ -877,12 +899,10 @@ calculate_pairwise_jaccard <- function(data) {
     )
 
     if (length(student_keys) < 2) {
-        return(
-            tibble::tibble()
-        )
+        return(tibble::tibble())
     }
 
-    student_pairs <- combn(
+    student_pairs <- utils::combn(
         student_keys,
         2,
         simplify = FALSE
@@ -892,29 +912,24 @@ calculate_pairwise_jaccard <- function(data) {
         student_pairs,
         function(pair) {
             shared_questions <- intersect(
-                question_sets[[pair[1]]],
-                question_sets[[pair[2]]]
+                question_sets[[pair[[1]]]],
+                question_sets[[pair[[2]]]]
             )
 
             tibble::tibble(
-                student_1 =
-                    pair[1],
-                student_2 =
-                    pair[2],
+                student_1 = pair[[1]],
+                student_2 = pair[[2]],
                 jaccard_similarity =
                     calculate_jaccard(
-                        question_sets[[pair[1]]],
-                        question_sets[[pair[2]]]
+                        question_sets[[pair[[1]]]],
+                        question_sets[[pair[[2]]]]
                     ),
                 shared_question_count =
-                    length(
-                        shared_questions
-                    )
+                    length(shared_questions)
             )
         }
     )
 }
-
 
 jaccard_details <- tryout_data |>
     dplyr::group_split(
@@ -937,73 +952,57 @@ jaccard_details <- tryout_data |>
         }
     )
 
-
 if (nrow(jaccard_details) > 0) {
     jaccard_summary <- jaccard_details |>
         dplyr::group_by(
             attempt_number
         ) |>
         dplyr::summarise(
-            total_pairs =
-                dplyr::n(),
-            mean_similarity =
-                mean(
-                    jaccard_similarity,
-                    na.rm = TRUE
-                ),
+            total_pairs = dplyr::n(),
+            mean_similarity = mean(
+                jaccard_similarity,
+                na.rm = TRUE
+            ),
             median_similarity =
-                median(
+                stats::median(
                     jaccard_similarity,
                     na.rm = TRUE
                 ),
-            minimum_similarity =
-                min(
-                    jaccard_similarity,
-                    na.rm = TRUE
-                ),
-            maximum_similarity =
-                max(
-                    jaccard_similarity,
-                    na.rm = TRUE
-                ),
-            mean_shared_questions =
-                mean(
-                    shared_question_count,
-                    na.rm = TRUE
-                ),
+            minimum_similarity = min(
+                jaccard_similarity,
+                na.rm = TRUE
+            ),
+            maximum_similarity = max(
+                jaccard_similarity,
+                na.rm = TRUE
+            ),
+            mean_shared_questions = mean(
+                shared_question_count,
+                na.rm = TRUE
+            ),
             .groups = "drop"
         )
 } else {
     jaccard_summary <- tibble::tibble(
-        attempt_number =
-            integer(),
-        total_pairs =
-            integer(),
-        mean_similarity =
-            numeric(),
-        median_similarity =
-            numeric(),
-        minimum_similarity =
-            numeric(),
-        maximum_similarity =
-            numeric(),
-        mean_shared_questions =
-            numeric()
+        attempt_number = integer(),
+        total_pairs = integer(),
+        mean_similarity = numeric(),
+        median_similarity = numeric(),
+        minimum_similarity = numeric(),
+        maximum_similarity = numeric(),
+        mean_shared_questions = numeric()
     )
 }
-
 
 save_csv_table(
     jaccard_details,
     "kemiripan_paket_soal_antar_siswa.csv"
 )
 
-
 save_csv_table(
     jaccard_summary,
     "ringkasan_kemiripan_paket_soal.csv"
 )
-
 
 # ============================================================
 # 15. PEMERIKSAAN KETERSEDIAAN LOG INTERNAL WRS
@@ -1012,143 +1011,240 @@ save_csv_table(
 wrs_log_columns <- c(
     "selection_level",
     "candidate_count",
-    "total_weight",
+    "wrs_total_weight",
     "random_value"
 )
 
-
-has_wrs_log <- all(
-    wrs_log_columns %in%
-        names(tryout_data)
+complete_wrs_index <- stats::complete.cases(
+    tryout_data[
+        wrs_log_columns
+    ]
 )
 
+complete_wrs_records <- sum(
+    complete_wrs_index
+)
 
-if (has_wrs_log) {
-    has_wrs_log <- any(
-        stats::complete.cases(
-            tryout_data[
-                wrs_log_columns
-            ]
-        )
-    )
+has_wrs_log <-
+    complete_wrs_records > 0
+
+wrs_log_coverage_percentage <- if (
+    nrow(tryout_data) > 0
+) {
+    complete_wrs_records /
+        nrow(tryout_data) *
+        100
+} else {
+    0
 }
 
+message(
+    "Baris log WRS lengkap: ",
+    complete_wrs_records,
+    " dari ",
+    nrow(tryout_data),
+    " (",
+    round(
+        wrs_log_coverage_percentage,
+        2
+    ),
+    "%)"
+)
 
 # ============================================================
-# 16. ANALISIS LOG INTERNAL WRS JIKA TERSEDIA
+# 16. ANALISIS LOG INTERNAL WRS
 # ============================================================
 
 if (has_wrs_log) {
-    wrs_log_analysis <- tryout_data |>
-        dplyr::mutate(
-            candidate_count =
-                as.numeric(candidate_count),
-            total_weight =
-                as.numeric(total_weight),
-            random_value =
-                as.numeric(random_value),
-            selection_level =
-                as.character(selection_level)
-        ) |>
+    wrs_log_analysis <- tryout_data[
+        complete_wrs_index,
+    ] |>
         dplyr::filter(
-            !is.na(candidate_count),
-            !is.na(total_weight),
-            !is.na(random_value),
-            total_weight > 0
+            candidate_count > 0,
+            wrs_total_weight > 0
         ) |>
         dplyr::mutate(
             theoretical_probability =
                 weight /
-                    total_weight,
+                    wrs_total_weight,
             valid_candidate_count =
                 candidate_count > 0,
             valid_total_weight =
-                total_weight >= weight,
+                wrs_total_weight >=
+                    weight,
             valid_random_value =
                 random_value >= 0 &
-                    random_value <= total_weight,
+                    random_value <=
+                        wrs_total_weight,
+            valid_probability =
+                theoretical_probability > 0 &
+                    theoretical_probability <= 1,
             selected_level_matches_question =
                 selection_level ==
                     difficulty
         )
 
-
-    wrs_validation_summary <- wrs_log_analysis |>
+    wrs_validation_summary <-
+        wrs_log_analysis |>
         dplyr::summarise(
-            log_internal_available =
-                TRUE,
-            total_records =
+            log_internal_available = TRUE,
+            total_tryout_records =
+                nrow(tryout_data),
+            complete_log_records =
+                dplyr::n(),
+            log_coverage_percentage =
+                complete_log_records /
+                    total_tryout_records *
+                    100,
+            valid_candidate_percentage =
+                mean(
+                    valid_candidate_count,
+                    na.rm = TRUE
+                ) * 100,
+            valid_total_weight_percentage =
+                mean(
+                    valid_total_weight,
+                    na.rm = TRUE
+                ) * 100,
+            valid_random_value_percentage =
+                mean(
+                    valid_random_value,
+                    na.rm = TRUE
+                ) * 100,
+            valid_probability_percentage =
+                mean(
+                    valid_probability,
+                    na.rm = TRUE
+                ) * 100,
+            selected_level_match_percentage =
+                mean(
+                    selected_level_matches_question,
+                    na.rm = TRUE
+                ) * 100,
+            mean_theoretical_probability =
+                mean(
+                    theoretical_probability,
+                    na.rm = TRUE
+                ),
+            information = paste(
+                "Validasi dilakukan menggunakan",
+                "log internal proses pemilihan WRS."
+            )
+        )
+
+    wrs_validation_by_attempt <-
+        wrs_log_analysis |>
+        dplyr::group_by(
+            attempt_number
+        ) |>
+        dplyr::summarise(
+            complete_log_records =
                 dplyr::n(),
             valid_candidate_percentage =
                 mean(
                     valid_candidate_count,
                     na.rm = TRUE
-                ) *
-                    100,
+                ) * 100,
             valid_total_weight_percentage =
                 mean(
                     valid_total_weight,
                     na.rm = TRUE
-                ) *
-                    100,
+                ) * 100,
             valid_random_value_percentage =
                 mean(
                     valid_random_value,
                     na.rm = TRUE
-                ) *
-                    100,
+                ) * 100,
+            valid_probability_percentage =
+                mean(
+                    valid_probability,
+                    na.rm = TRUE
+                ) * 100,
             selected_level_match_percentage =
                 mean(
                     selected_level_matches_question,
                     na.rm = TRUE
-                ) *
-                    100,
-            information =
-                paste(
-                    "Validasi dilakukan menggunakan",
-                    "log internal proses pemilihan WRS."
-                )
+                ) * 100,
+            mean_theoretical_probability =
+                mean(
+                    theoretical_probability,
+                    na.rm = TRUE
+                ),
+            .groups = "drop"
+        )
+} else {
+    wrs_log_analysis <- tibble::tibble(
+        student_key = character(),
+        student_name = character(),
+        attempt_number = integer(),
+        question_number = integer(),
+        question_id = character(),
+        difficulty = character(),
+        weight = numeric(),
+        selection_level = character(),
+        candidate_count = integer(),
+        wrs_total_weight = numeric(),
+        random_value = numeric(),
+        theoretical_probability = numeric(),
+        valid_candidate_count = logical(),
+        valid_total_weight = logical(),
+        valid_random_value = logical(),
+        valid_probability = logical(),
+        selected_level_matches_question = logical()
+    )
+
+    wrs_validation_summary <-
+        tibble::tibble(
+            log_internal_available = FALSE,
+            total_tryout_records =
+                nrow(tryout_data),
+            complete_log_records = 0L,
+            log_coverage_percentage = 0,
+            valid_candidate_percentage =
+                NA_real_,
+            valid_total_weight_percentage =
+                NA_real_,
+            valid_random_value_percentage =
+                NA_real_,
+            valid_probability_percentage =
+                NA_real_,
+            selected_level_match_percentage =
+                NA_real_,
+            mean_theoretical_probability =
+                NA_real_,
+            information = paste(
+                "Log internal WRS tidak tersedia",
+                "secara lengkap."
+            )
         )
 
-
-    save_csv_table(
-        wrs_log_analysis,
-        "analisis_log_wrs.csv"
-    )
-} else {
-    wrs_validation_summary <- tibble::tibble(
-        log_internal_available =
-            FALSE,
-        total_records =
-            nrow(tryout_data),
-        valid_candidate_percentage =
-            NA_real_,
-        valid_total_weight_percentage =
-            NA_real_,
-        valid_random_value_percentage =
-            NA_real_,
-        selected_level_match_percentage =
-            NA_real_,
-        information =
-            paste(
-                "Kolom selection_level, candidate_count,",
-                "total_weight kandidat, dan random_value",
-                "tidak tersedia pada data sumber.",
-                "Analisis WRS dibatasi pada distribusi bobot,",
-                "frekuensi soal terpilih, distribusi kesulitan,",
-                "dan variasi soal antar peserta.",
-                "Session_total_weight tidak digunakan sebagai",
-                "total_weight kandidat karena memiliki arti berbeda."
-            )
-    )
+    wrs_validation_by_attempt <-
+        tibble::tibble(
+            attempt_number = integer(),
+            complete_log_records = integer(),
+            valid_candidate_percentage = numeric(),
+            valid_total_weight_percentage = numeric(),
+            valid_random_value_percentage = numeric(),
+            valid_probability_percentage = numeric(),
+            selected_level_match_percentage = numeric(),
+            mean_theoretical_probability = numeric()
+        )
 }
 
+save_csv_table(
+    wrs_log_analysis,
+    "analisis_log_wrs.csv"
+)
 
 save_csv_table(
     wrs_validation_summary,
     "validasi_log_wrs.csv"
 )
 
+save_csv_table(
+    wrs_validation_by_attempt,
+    "validasi_log_wrs_per_percobaan.csv"
+)
 
 # ============================================================
 # 17. GRAFIK VARIASI SOAL
@@ -1174,25 +1270,19 @@ variation_plot <- ggplot2::ggplot(
         size = 2
     ) +
     ggplot2::scale_x_continuous(
-        breaks = 1:15
+        breaks = question_breaks
     ) +
     ggplot2::labs(
-        title =
-            "Variasi Soal pada Setiap Nomor",
-        x =
-            "Nomor Soal",
-        y =
-            "Jumlah Soal Berbeda",
-        linetype =
-            "Percobaan"
+        title = "Variasi Soal pada Setiap Nomor",
+        x = "Nomor Soal",
+        y = "Jumlah Soal Berbeda",
+        linetype = "Percobaan"
     )
-
 
 save_figure(
     variation_plot,
     "variasi_soal_per_nomor.png"
 )
-
 
 # ============================================================
 # 18. GRAFIK FREKUENSI PEMILIHAN BERDASARKAN BOBOT
@@ -1220,25 +1310,19 @@ weight_frequency_plot <- ggplot2::ggplot(
         )
     ) +
     ggplot2::labs(
-        title =
-            "Frekuensi Pemilihan Berdasarkan Bobot",
-        subtitle =
-            paste(
-                "Menunjukkan hasil pemilihan yang teramati,",
-                "bukan probabilitas internal setiap undian"
-            ),
-        x =
-            "Bobot Soal",
-        y =
-            "Frekuensi Pemilihan"
+        title = "Frekuensi Pemilihan Berdasarkan Bobot",
+        subtitle = paste(
+            "Menunjukkan hasil pemilihan yang teramati,",
+            "bukan probabilitas internal setiap undian"
+        ),
+        x = "Bobot Soal",
+        y = "Frekuensi Pemilihan"
     )
-
 
 save_figure(
     weight_frequency_plot,
     "frekuensi_pemilihan_berdasarkan_bobot.png"
 )
-
 
 # ============================================================
 # 19. GRAFIK DISTRIBUSI KESULITAN PER NOMOR
@@ -1257,25 +1341,19 @@ difficulty_position_plot <- ggplot2::ggplot(
         ~attempt_number
     ) +
     ggplot2::scale_x_continuous(
-        breaks = 1:15
+        breaks = question_breaks
     ) +
     ggplot2::labs(
-        title =
-            "Distribusi Kesulitan Berdasarkan Nomor Soal",
-        x =
-            "Nomor Soal",
-        y =
-            "Persentase",
-        fill =
-            "Kesulitan"
+        title = "Distribusi Kesulitan Berdasarkan Nomor Soal",
+        x = "Nomor Soal",
+        y = "Persentase",
+        fill = "Kesulitan"
     )
-
 
 save_figure(
     difficulty_position_plot,
     "distribusi_kesulitan_per_nomor.png"
 )
-
 
 # ============================================================
 # 20. GRAFIK AKURASI BERDASARKAN KESULITAN
@@ -1301,25 +1379,19 @@ difficulty_accuracy_plot <- ggplot2::ggplot(
         size = 3
     ) +
     ggplot2::labs(
-        title =
-            "Akurasi Berdasarkan Tingkat Kesulitan",
-        x =
-            "Tingkat Kesulitan",
-        y =
-            "Akurasi (%)",
-        linetype =
-            "Percobaan"
+        title = "Akurasi Berdasarkan Tingkat Kesulitan",
+        x = "Tingkat Kesulitan",
+        y = "Akurasi (%)",
+        linetype = "Percobaan"
     )
-
 
 save_figure(
     difficulty_accuracy_plot,
     "akurasi_berdasarkan_kesulitan_adaptif.png"
 )
 
-
 # ============================================================
-# 21. MEMBUAT WORKBOOK ANALISIS ADAPTIF DAN WRS
+# 21. WORKBOOK ANALISIS ADAPTIF DAN WRS
 # ============================================================
 
 adaptive_workbook <- list(
@@ -1354,13 +1426,16 @@ adaptive_workbook <- list(
     Audit_Soal_Berulang =
         repeated_question_audit,
     Validasi_WRS =
-        wrs_validation_summary
+        wrs_validation_summary,
+    Validasi_WRS_Percobaan =
+        wrs_validation_by_attempt,
+    Log_WRS =
+        wrs_log_analysis
 )
-
 
 writexl::write_xlsx(
     adaptive_workbook,
-    here(
+    here::here(
         "analytics",
         "output",
         "tables",
@@ -1368,44 +1443,32 @@ writexl::write_xlsx(
     )
 )
 
-
-# ============================================================
-# INFORMASI HASIL
-# ============================================================
-
 message("")
 message("================================================")
 message("ANALISIS MEKANISME ADAPTIF DAN WRS SELESAI")
 message("================================================")
-
 message(
     "Jumlah sesi yang diperiksa: ",
     nrow(first_question_check)
 )
-
 message(
     "Jumlah posisi soal yang dianalisis: ",
     nrow(question_variation)
 )
-
 message(
     "Jumlah pasangan siswa pada analisis Jaccard: ",
     nrow(jaccard_details)
 )
-
 message(
     "Log internal WRS tersedia: ",
     has_wrs_log
 )
-
-if (!has_wrs_log) {
-    message(
-        paste(
-            "Analisis WRS menggunakan distribusi bobot,",
-            "frekuensi pemilihan, distribusi kesulitan,",
-            "dan variasi soal antar peserta."
-        )
-    )
-}
-
+message(
+    "Cakupan log internal WRS: ",
+    round(
+        wrs_log_coverage_percentage,
+        2
+    ),
+    "%"
+)
 message("================================================")
