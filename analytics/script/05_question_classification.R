@@ -1,5 +1,5 @@
 # ============================================================
-# 04b_question_classification.R
+# 05_question_classification.R
 # Analisis kesesuaian klasifikasi tingkat kesulitan soal
 # ============================================================
 
@@ -27,28 +27,43 @@ if (
         quietly = TRUE
     )
 ) {
-    install.packages("jsonlite")
+    stop(
+        paste(
+            "Package jsonlite belum tersedia.",
+            "Instal menggunakan install.packages('jsonlite')."
+        )
+    )
 }
 
 # ============================================================
 # KONFIGURASI FILE
 # ============================================================
 
-CLASSIFICATION_FILE <- here(
+CLASSIFICATION_FILE <- here::here(
     "analytics",
     "data",
     "raw",
     "question-classification-results.json"
 )
 
-OUTPUT_WORKBOOK <- here(
+TABLE_DIRECTORY <- here::here(
     "analytics",
     "output",
-    "tables",
+    "tables"
+)
+
+FIGURE_DIRECTORY <- here::here(
+    "analytics",
+    "output",
+    "figures"
+)
+
+OUTPUT_WORKBOOK <- file.path(
+    TABLE_DIRECTORY,
     "hasil_analisis_klasifikasi_soal.xlsx"
 )
 
-SUMMARY_TEXT_FILE <- here(
+SUMMARY_TEXT_FILE <- here::here(
     "analytics",
     "output",
     "ringkasan_klasifikasi_soal.txt"
@@ -65,6 +80,32 @@ if (!file.exists(CLASSIFICATION_FILE)) {
     )
 }
 
+# Menghapus output lama yang sudah tidak digunakan.
+obsolete_table_files <- c(
+    "metrik_per_kategori_klasifikasi.csv",
+    "ringkasan_skor_klasifikasi.csv"
+)
+
+obsolete_figure_files <- c(
+    "kesesuaian_klasifikasi_per_kategori.png"
+)
+
+unlink(
+    file.path(
+        TABLE_DIRECTORY,
+        obsolete_table_files
+    ),
+    force = TRUE
+)
+
+unlink(
+    file.path(
+        FIGURE_DIRECTORY,
+        obsolete_figure_files
+    ),
+    force = TRUE
+)
+
 # ============================================================
 # MEMBACA JSON HASIL CLASSIFIER
 # ============================================================
@@ -76,15 +117,22 @@ raw_json <- jsonlite::fromJSON(
 )
 
 if (
-    is.null(raw_json$questions) ||
-        nrow(raw_json$questions) == 0
+    is.null(
+        raw_json$
+            questions
+    ) ||
+        nrow(
+            raw_json$
+                questions
+        ) == 0
 ) {
     stop(
         "JSON tidak memiliki data questions."
     )
 }
 
-classification_data <- raw_json$questions |>
+classification_data <- raw_json$
+    questions |>
     tibble::as_tibble() |>
     janitor::clean_names()
 
@@ -92,6 +140,11 @@ required_columns <- c(
     "question_number",
     "topic",
     "question_text",
+    "option_a",
+    "option_b",
+    "option_c",
+    "option_d",
+    "correct_answer",
     "reference_difficulty",
     "system_difficulty",
     "difficulty_score",
@@ -102,7 +155,9 @@ required_columns <- c(
 
 missing_columns <- setdiff(
     required_columns,
-    names(classification_data)
+    names(
+        classification_data
+    )
 )
 
 if (length(missing_columns) > 0) {
@@ -127,82 +182,70 @@ classification_data <- classification_data |>
             as.integer(
                 question_number
             ),
-
         topic =
             as.character(
                 topic
             ),
-
         question_text =
             as.character(
                 question_text
             ),
-
         option_a =
             as.character(
                 option_a
             ),
-
         option_b =
             as.character(
                 option_b
             ),
-
         option_c =
             as.character(
                 option_c
             ),
-
         option_d =
             as.character(
                 option_d
             ),
-
         correct_answer =
             as.character(
                 correct_answer
             ),
-
         reference_difficulty =
             stringr::str_to_upper(
                 as.character(
                     reference_difficulty
                 )
             ),
-
         system_difficulty =
             stringr::str_to_upper(
                 as.character(
                     system_difficulty
                 )
             ),
-
         difficulty_score =
             as.numeric(
                 difficulty_score
             ),
-
         detected_indicators =
             as.character(
                 detected_indicator_text
             ),
-
         weight_priority =
             as.character(
                 weight_priority
             ),
-
         weight =
             as.numeric(
                 weight
             ),
-
         is_match =
             reference_difficulty ==
                 system_difficulty
     ) |>
     dplyr::filter(
-        !is.na(question_number),
+        !is.na(
+            question_number
+        ),
         reference_difficulty %in%
             difficulty_levels,
         system_difficulty %in%
@@ -214,7 +257,7 @@ classification_data <- classification_data |>
 
 if (nrow(classification_data) == 0) {
     stop(
-        "Tidak ada baris klasifikasi valid."
+        "Tidak ada baris klasifikasi yang valid."
     )
 }
 
@@ -229,16 +272,56 @@ save_csv_table(
 )
 
 # ============================================================
-# CONFUSION MATRIX
-# Baris = label acuan
-# Kolom = hasil sistem
+# RINGKASAN KESESUAIAN KESELURUHAN
 # ============================================================
 
-confusion_matrix <- classification_data |>
+total_questions <- nrow(
+    classification_data
+)
+
+matched_questions <- sum(
+    classification_data$
+        is_match,
+    na.rm = TRUE
+)
+
+unmatched_questions <-
+    total_questions -
+    matched_questions
+
+conformity_percentage <-
+    matched_questions /
+        total_questions *
+        100
+
+overall_summary <- tibble::tibble(
+    total_questions =
+        total_questions,
+    matched_questions =
+        matched_questions,
+    unmatched_questions =
+        unmatched_questions,
+    conformity_percentage =
+        conformity_percentage
+)
+
+save_csv_table(
+    overall_summary,
+    "ringkasan_klasifikasi_soal.csv"
+)
+
+# ============================================================
+# CONFUSION MATRIX
+# Baris = kategori acuan
+# Kolom = hasil klasifikasi sistem
+# ============================================================
+
+confusion_matrix_long <- classification_data |>
     dplyr::count(
         reference_difficulty,
         system_difficulty,
-        name = "question_count"
+        name =
+            "question_count"
     ) |>
     tidyr::complete(
         reference_difficulty =
@@ -256,7 +339,6 @@ confusion_matrix <- classification_data |>
                 levels =
                     difficulty_levels
             ),
-
         system_difficulty =
             factor(
                 system_difficulty,
@@ -269,275 +351,122 @@ confusion_matrix <- classification_data |>
         system_difficulty
     )
 
+confusion_matrix <- confusion_matrix_long |>
+    dplyr::mutate(
+        reference_difficulty =
+            as.character(
+                reference_difficulty
+            ),
+        system_difficulty =
+            as.character(
+                system_difficulty
+            )
+    ) |>
+    tidyr::pivot_wider(
+        names_from =
+            system_difficulty,
+        values_from =
+            question_count,
+        values_fill =
+            0
+    ) |>
+    dplyr::mutate(
+        total =
+            LOW +
+                MEDIUM +
+                HIGH
+    ) |>
+    dplyr::arrange(
+        match(
+            reference_difficulty,
+            difficulty_levels
+        )
+    )
+
+confusion_matrix_total <- tibble::tibble(
+    reference_difficulty =
+        "Jumlah",
+    LOW =
+        sum(
+            confusion_matrix$
+                LOW
+        ),
+    MEDIUM =
+        sum(
+            confusion_matrix$
+                MEDIUM
+        ),
+    HIGH =
+        sum(
+            confusion_matrix$
+                HIGH
+        ),
+    total =
+        sum(
+            confusion_matrix$
+                total
+        )
+)
+
+confusion_matrix <- dplyr::bind_rows(
+    confusion_matrix,
+    confusion_matrix_total
+)
+
 save_csv_table(
     confusion_matrix,
     "confusion_matrix_klasifikasi_soal.csv"
 )
 
 # ============================================================
-# KAPPA COHEN
+# KESESUAIAN BERDASARKAN KATEGORI ACUAN
 # ============================================================
 
-total_questions <- nrow(
-    classification_data
-)
-
-matched_questions <- sum(
-    classification_data$is_match,
-    na.rm = TRUE
-)
-
-unmatched_questions <-
-    total_questions -
-    matched_questions
-
-observed_agreement <-
-    matched_questions /
-    total_questions
-
-reference_distribution <-
-    classification_data |>
-    dplyr::count(
-        reference_difficulty,
-        name = "reference_count"
+category_conformity <- classification_data |>
+    dplyr::group_by(
+        reference_difficulty
     ) |>
-    tidyr::complete(
-        reference_difficulty =
-            difficulty_levels,
-        fill = list(
-            reference_count = 0L
-        )
-    )
-
-system_distribution <-
-    classification_data |>
-    dplyr::count(
-        system_difficulty,
-        name = "system_count"
-    ) |>
-    tidyr::complete(
-        system_difficulty =
-            difficulty_levels,
-        fill = list(
-            system_count = 0L
-        )
-    )
-
-expected_agreement <- sum(
-    (
-        reference_distribution$
-            reference_count /
-            total_questions
-    ) *
-        (
-            system_distribution$
-                system_count /
-                total_questions
-        )
-)
-
-cohen_kappa <- if (
-    expected_agreement < 1
-) {
-    (
-        observed_agreement -
-            expected_agreement
-    ) /
-        (
-            1 -
-                expected_agreement
-        )
-} else {
-    NA_real_
-}
-
-interpret_kappa <- function(value) {
-    dplyr::case_when(
-        is.na(value) ~
-            NA_character_,
-        value < 0 ~
-            "Lebih buruk dari kebetulan",
-        value < 0.20 ~
-            "Sangat rendah",
-        value < 0.40 ~
-            "Rendah",
-        value < 0.60 ~
-            "Sedang",
-        value < 0.80 ~
-            "Kuat",
-        TRUE ~
-            "Sangat kuat"
-    )
-}
-
-overall_summary <- tibble::tibble(
-    total_questions =
-        total_questions,
-
-    matched_questions =
-        matched_questions,
-
-    unmatched_questions =
-        unmatched_questions,
-
-    accuracy_percent =
-        observed_agreement *
-            100,
-
-    expected_agreement_percent =
-        expected_agreement *
-            100,
-
-    cohen_kappa =
-        cohen_kappa,
-
-    kappa_interpretation =
-        interpret_kappa(
-            cohen_kappa
-        )
-)
-
-save_csv_table(
-    overall_summary,
-    "ringkasan_klasifikasi_soal.csv"
-)
-
-# ============================================================
-# METRIK PER KATEGORI
-# ============================================================
-
-calculate_class_metrics <- function(
-  target_level
-) {
-    reference_positive <-
-        classification_data$
-            reference_difficulty ==
-        target_level
-
-    predicted_positive <-
-        classification_data$
-            system_difficulty ==
-        target_level
-
-    true_positive <- sum(
-        reference_positive &
-            predicted_positive
-    )
-
-    false_negative <- sum(
-        reference_positive &
-            !predicted_positive
-    )
-
-    false_positive <- sum(
-        !reference_positive &
-            predicted_positive
-    )
-
-    true_negative <- sum(
-        !reference_positive &
-            !predicted_positive
-    )
-
-    safe_divide <- function(
-      numerator,
-      denominator
-    ) {
-        if (denominator == 0) {
-            return(NA_real_)
-        }
-
-        numerator /
-            denominator
-    }
-
-    precision <- safe_divide(
-        true_positive,
-        true_positive +
-            false_positive
-    )
-
-    recall <- safe_divide(
-        true_positive,
-        true_positive +
-            false_negative
-    )
-
-    specificity <- safe_divide(
-        true_negative,
-        true_negative +
-            false_positive
-    )
-
-    f1_score <- if (
-        is.na(precision) ||
-            is.na(recall) ||
-            precision +
-                recall ==
-                0
-    ) {
-        NA_real_
-    } else {
-        2 *
-            precision *
-            recall /
-            (
-                precision +
-                    recall
-            )
-    }
-
-    tibble::tibble(
-        difficulty =
-            target_level,
-
+    dplyr::summarise(
         reference_count =
+            dplyr::n(),
+        matched_count =
             sum(
-                reference_positive
+                is_match,
+                na.rm = TRUE
             ),
-
-        predicted_count =
+        unmatched_count =
             sum(
-                predicted_positive
+                !is_match,
+                na.rm = TRUE
             ),
-
-        true_positive =
-            true_positive,
-
-        false_negative =
-            false_negative,
-
-        false_positive =
-            false_positive,
-
-        true_negative =
-            true_negative,
-
-        precision_percent =
-            precision *
+        conformity_percentage =
+            matched_count /
+                reference_count *
                 100,
-
-        recall_percent =
-            recall *
-                100,
-
-        specificity_percent =
-            specificity *
-                100,
-
-        f1_score =
-            f1_score
+        .groups =
+            "drop"
+    ) |>
+    dplyr::mutate(
+        reference_difficulty =
+            factor(
+                reference_difficulty,
+                levels =
+                    difficulty_levels
+            )
+    ) |>
+    dplyr::arrange(
+        reference_difficulty
+    ) |>
+    dplyr::mutate(
+        reference_difficulty =
+            as.character(
+                reference_difficulty
+            )
     )
-}
-
-class_metrics <- purrr::map_dfr(
-    difficulty_levels,
-    calculate_class_metrics
-)
 
 save_csv_table(
-    class_metrics,
-    "metrik_per_kategori_klasifikasi.csv"
+    category_conformity,
+    "ringkasan_kesesuaian_per_kategori.csv"
 )
 
 # ============================================================
@@ -556,7 +485,6 @@ label_distribution <- dplyr::bind_rows(
             label_source =
                 "Label acuan"
         ),
-
     classification_data |>
         dplyr::count(
             difficulty =
@@ -596,7 +524,7 @@ save_csv_table(
 )
 
 # ============================================================
-# HASIL PER TOPIK
+# RINGKASAN HASIL PER TOPIK
 # ============================================================
 
 topic_summary <- classification_data |>
@@ -606,33 +534,22 @@ topic_summary <- classification_data |>
     dplyr::summarise(
         total_questions =
             dplyr::n(),
-
         matched_questions =
             sum(
                 is_match,
                 na.rm = TRUE
             ),
-
         unmatched_questions =
             sum(
                 !is_match,
                 na.rm = TRUE
             ),
-
-        accuracy_percent =
-            mean(
-                is_match,
-                na.rm = TRUE
-            ) *
+        conformity_percentage =
+            matched_questions /
+                total_questions *
                 100,
-
-        mean_difficulty_score =
-            mean(
-                difficulty_score,
-                na.rm = TRUE
-            ),
-
-        .groups = "drop"
+        .groups =
+            "drop"
     )
 
 save_csv_table(
@@ -666,60 +583,18 @@ save_csv_table(
 )
 
 # ============================================================
-# RINGKASAN SKOR CLASSIFIER
-# ============================================================
-
-score_summary <- classification_data |>
-    dplyr::group_by(
-        reference_difficulty,
-        system_difficulty
-    ) |>
-    dplyr::summarise(
-        total_questions =
-            dplyr::n(),
-
-        mean_score =
-            mean(
-                difficulty_score,
-                na.rm = TRUE
-            ),
-
-        sd_score =
-            stats::sd(
-                difficulty_score,
-                na.rm = TRUE
-            ),
-
-        minimum_score =
-            min(
-                difficulty_score,
-                na.rm = TRUE
-            ),
-
-        maximum_score =
-            max(
-                difficulty_score,
-                na.rm = TRUE
-            ),
-
-        .groups = "drop"
-    )
-
-save_csv_table(
-    score_summary,
-    "ringkasan_skor_klasifikasi.csv"
-)
-
-# ============================================================
 # GRAFIK CONFUSION MATRIX
 # ============================================================
 
 confusion_plot <- ggplot2::ggplot(
-    confusion_matrix,
+    confusion_matrix_long,
     ggplot2::aes(
-        x = system_difficulty,
-        y = reference_difficulty,
-        fill = question_count
+        x =
+            system_difficulty,
+        y =
+            reference_difficulty,
+        fill =
+            question_count
     )
 ) +
     ggplot2::geom_tile() +
@@ -733,16 +608,15 @@ confusion_plot <- ggplot2::ggplot(
     ggplot2::labs(
         title =
             "Confusion Matrix Klasifikasi Tingkat Kesulitan",
-
         subtitle =
-            "Baris menunjukkan label acuan dan kolom menunjukkan hasil sistem",
-
+            paste(
+                "Baris menunjukkan label acuan",
+                "dan kolom menunjukkan hasil sistem"
+            ),
         x =
             "Hasil Klasifikasi Sistem",
-
         y =
             "Label Acuan",
-
         fill =
             "Jumlah Soal"
     )
@@ -761,9 +635,12 @@ save_figure(
 distribution_plot <- ggplot2::ggplot(
     label_distribution,
     ggplot2::aes(
-        x = difficulty,
-        y = question_count,
-        fill = label_source
+        x =
+            difficulty,
+        y =
+            question_count,
+        fill =
+            label_source
     )
 ) +
     ggplot2::geom_col(
@@ -773,13 +650,10 @@ distribution_plot <- ggplot2::ggplot(
     ggplot2::labs(
         title =
             "Perbandingan Distribusi Label Tingkat Kesulitan",
-
         x =
             "Tingkat Kesulitan",
-
         y =
             "Jumlah Soal",
-
         fill =
             "Sumber Label"
     )
@@ -792,84 +666,22 @@ save_figure(
 )
 
 # ============================================================
-# GRAFIK RECALL PER KATEGORI
-# ============================================================
-
-recall_plot <- ggplot2::ggplot(
-    class_metrics,
-    ggplot2::aes(
-        x = factor(
-            difficulty,
-            levels =
-                difficulty_levels
-        ),
-        y = recall_percent
-    )
-) +
-    ggplot2::geom_col() +
-    ggplot2::geom_text(
-        ggplot2::aes(
-            label =
-                paste0(
-                    round(
-                        recall_percent,
-                        1
-                    ),
-                    "%"
-                )
-        ),
-        vjust = -0.4
-    ) +
-    ggplot2::scale_y_continuous(
-        limits = c(
-            0,
-            105
-        )
-    ) +
-    ggplot2::labs(
-        title =
-            "Kesesuaian Klasifikasi per Kategori",
-
-        x =
-            "Tingkat Kesulitan",
-
-        y =
-            "Recall/Kesesuaian (%)"
-    )
-
-save_figure(
-    recall_plot,
-    "kesesuaian_klasifikasi_per_kategori.png",
-    width = 8,
-    height = 6
-)
-
-# ============================================================
-# WORKBOOK HASIL
+# WORKBOOK HASIL KLASIFIKASI
 # ============================================================
 
 classification_workbook <- list(
     Ringkasan =
         overall_summary,
-
     Confusion_Matrix =
         confusion_matrix,
-
-    Metrik_Kategori =
-        class_metrics,
-
+    Kesesuaian_Kategori =
+        category_conformity,
     Distribusi_Label =
         label_distribution,
-
     Ringkasan_Topik =
         topic_summary,
-
     Soal_Tidak_Sesuai =
         mismatch_questions,
-
-    Ringkasan_Skor =
-        score_summary,
-
     Detail_Soal =
         classification_data
 )
@@ -902,39 +714,25 @@ summary_lines <- c(
     paste0(
         "Persentase kesesuaian: ",
         round(
-            observed_agreement *
-                100,
+            conformity_percentage,
             2
         ),
         "%"
     ),
-    paste(
-        "Cohen's Kappa:",
-        round(
-            cohen_kappa,
-            4
-        )
-    ),
-    paste(
-        "Interpretasi Kappa:",
-        interpret_kappa(
-            cohen_kappa
-        )
-    ),
     "",
-    "Kesesuaian per kategori:"
+    "Kesesuaian berdasarkan kategori:"
 )
 
 for (
     row_number in
     seq_len(
         nrow(
-            class_metrics
+            category_conformity
         )
     )
 ) {
     current_row <-
-        class_metrics[
+        category_conformity[
             row_number,
         ]
 
@@ -942,13 +740,21 @@ for (
         summary_lines,
         paste0(
             "- ",
-            current_row$difficulty,
+            current_row$
+                reference_difficulty,
             ": ",
+            current_row$
+                matched_count,
+            " dari ",
+            current_row$
+                reference_count,
+            " soal sesuai (",
             round(
-                current_row$recall_percent,
+                current_row$
+                    conformity_percentage,
                 2
             ),
-            "%"
+            "%)"
         )
     )
 }
@@ -986,23 +792,10 @@ message(
 message(
     "Persentase kesesuaian: ",
     round(
-        observed_agreement *
-            100,
+        conformity_percentage,
         2
     ),
     "%"
-)
-message(
-    "Cohen's Kappa: ",
-    round(
-        cohen_kappa,
-        4
-    ),
-    " (",
-    interpret_kappa(
-        cohen_kappa
-    ),
-    ")"
 )
 message(
     "Workbook: ",
