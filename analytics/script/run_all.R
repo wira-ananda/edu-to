@@ -1,190 +1,518 @@
 # ============================================================
 # run_all.R
-# Menjalankan seluruh proses analisis secara berurutan
+# Membersihkan hasil lama dan menjalankan seluruh analisis
 # ============================================================
 
-SCRIPT_DIRECTORY <- if (
-    dir.exists("analytics/script")
+CLEAN_GENERATED_OUTPUTS <- TRUE
+
+
+# ============================================================
+# MENENTUKAN LOKASI SCRIPT
+# Bisa dijalankan dari:
+# - root proyek
+# - folder analytics/script
+# ============================================================
+
+original_working_directory <- getwd()
+
+script_directory <- if (
+    file.exists(
+        file.path(
+            "analytics",
+            "script",
+            "00_setup.R"
+        )
+    )
 ) {
     normalizePath(
-        "analytics/script",
+        file.path(
+            "analytics",
+            "script"
+        ),
         mustWork = TRUE
     )
-} else {
+} else if (
+    file.exists("00_setup.R")
+) {
     normalizePath(
         ".",
         mustWork = TRUE
     )
-}
-
-get_script_path <- function(file_name) {
-    file.path(
-        SCRIPT_DIRECTORY,
-        file_name
+} else {
+    stop(
+        paste(
+            "Folder analytics/script tidak ditemukan.",
+            "Jalankan run_all.R dari root proyek",
+            "atau dari folder analytics/script."
+        )
     )
 }
 
-cat("\n")
-cat("===============================================\n")
-cat("MEMULAI SELURUH PROSES ANALISIS\n")
-cat("===============================================\n\n")
-
-# Jalankan setup terlebih dahulu agar paket, here(), dan folder tersedia.
-setup_file <- get_script_path(
-    "00_setup.R"
+analytics_directory <- dirname(
+    script_directory
 )
 
-if (!file.exists(setup_file)) {
-    stop("File 00_setup.R tidak ditemukan.")
+processed_directory <- file.path(
+    analytics_directory,
+    "data",
+    "processed"
+)
+
+raw_directory <- file.path(
+    analytics_directory,
+    "data",
+    "raw"
+)
+
+output_directory <- file.path(
+    analytics_directory,
+    "output"
+)
+
+setwd(script_directory)
+
+on.exit(
+    setwd(
+        original_working_directory
+    ),
+    add = TRUE
+)
+
+
+# ============================================================
+# FUNGSI BANTUAN
+# ============================================================
+
+print_separator <- function(
+  character = "=",
+  length = 55
+) {
+    cat(
+        paste(
+            rep(
+                character,
+                length
+            ),
+            collapse = ""
+        ),
+        "\n"
+    )
 }
 
-source(
-    setup_file,
-    echo = FALSE,
-    chdir = TRUE
-)
 
-# ============================================================
-# MEMBERSIHKAN HASIL GENERATE LAMA
-# Raw data tidak pernah dihapus.
-# ============================================================
-
-remove_matching_files <- function(
-  directory,
-  pattern
+assert_safe_cleanup_path <- function(
+  directory_path,
+  expected_directory_name
 ) {
-    if (!dir.exists(directory)) {
-        return(invisible(NULL))
+    normalized_path <- normalizePath(
+        directory_path,
+        mustWork = FALSE
+    )
+
+    actual_directory_name <- basename(
+        normalized_path
+    )
+
+    if (
+        actual_directory_name !=
+            expected_directory_name
+    ) {
+        stop(
+            paste0(
+                "Cleanup dibatalkan karena path tidak aman: ",
+                normalized_path
+            )
+        )
     }
 
-    files <- list.files(
-        directory,
-        pattern = pattern,
-        full.names = TRUE
+    if (
+        !grepl(
+            paste0(
+                "[/\\\\]analytics[/\\\\]"
+            ),
+            normalized_path
+        )
+    ) {
+        stop(
+            paste0(
+                "Cleanup dibatalkan karena path bukan ",
+                "bagian dari folder analytics: ",
+                normalized_path
+            )
+        )
+    }
+
+    invisible(
+        normalized_path
+    )
+}
+
+
+remove_generated_directory <- function(
+  directory_path,
+  expected_directory_name
+) {
+    assert_safe_cleanup_path(
+        directory_path,
+        expected_directory_name
     )
 
-    if (length(files) > 0) {
+    if (
+        dir.exists(
+            directory_path
+        )
+    ) {
         unlink(
-            files,
-            recursive = FALSE,
+            directory_path,
+            recursive = TRUE,
             force = TRUE
         )
-    }
 
-    invisible(files)
-}
-
-remove_matching_files(
-    here::here(
-        "analytics",
-        "data",
-        "processed"
-    ),
-    "\\.csv$"
-)
-
-remove_matching_files(
-    here::here(
-        "analytics",
-        "output",
-        "figures"
-    ),
-    "\\.(png|jpg|jpeg)$"
-)
-
-remove_matching_files(
-    here::here(
-        "analytics",
-        "output",
-        "tables"
-    ),
-    "\\.(csv|xlsx)$"
-)
-
-remove_matching_files(
-    here::here(
-        "analytics",
-        "output"
-    ),
-    "^(hasil_analisis_bab_4\\.xlsx|ringkasan_hasil_analisis\\.txt)$"
-)
-
-cat("Hasil generate lama telah dibersihkan.\n")
-cat("Raw data tetap aman pada analytics/data/raw.\n\n")
-
-scripts <- c(
-    "01_import_clean.R",
-    "02_descriptive.R",
-    "03_compare_attempts.R",
-    "04_adaptive_wrs.R",
-    "05_export_results.R"
-)
-
-for (script_name in scripts) {
-    script_path <- get_script_path(
-        script_name
-    )
-
-    cat("\n")
-    cat("-----------------------------------------------\n")
-    cat("Menjalankan:", script_name, "\n")
-    cat("-----------------------------------------------\n")
-
-    if (!file.exists(script_path)) {
-        stop(
-            "File script tidak ditemukan: ",
-            script_path
+        cat(
+            "Dibersihkan:",
+            directory_path,
+            "\n"
         )
     }
+
+    dir.create(
+        directory_path,
+        recursive = TRUE,
+        showWarnings = FALSE
+    )
+}
+
+
+run_analysis_script <- function(
+  script_path
+) {
+    cat("\n")
+    print_separator("-")
+    cat(
+        "Menjalankan:",
+        script_path,
+        "\n"
+    )
+    print_separator("-")
+
+    if (
+        !file.exists(
+            script_path
+        )
+    ) {
+        stop(
+            paste0(
+                "File script tidak ditemukan: ",
+                script_path
+            )
+        )
+    }
+
+    script_environment <- new.env(
+        parent = globalenv()
+    )
 
     tryCatch(
         {
             source(
                 script_path,
                 echo = FALSE,
-                chdir = TRUE
+                local =
+                    script_environment,
+                chdir = FALSE
             )
 
             cat(
-                "Berhasil:",
-                script_name,
+                "\nBerhasil:",
+                script_path,
                 "\n"
             )
         },
         error = function(error) {
+            cat("\n")
+            print_separator("!")
             cat(
-                "\nERROR pada:",
-                script_name,
+                "ERROR PADA:",
+                script_path,
                 "\n"
             )
-
             cat(
-                "Pesan:",
+                "PESAN:",
                 conditionMessage(error),
                 "\n"
             )
+            print_separator("!")
 
             stop(
-                "Proses dihentikan karena terjadi kesalahan."
+                paste0(
+                    "Proses dihentikan karena ",
+                    "terjadi kesalahan pada ",
+                    script_path,
+                    "."
+                ),
+                call. = FALSE
             )
         }
     )
 }
 
+
+# ============================================================
+# INFORMASI AWAL
+# ============================================================
+
 cat("\n")
-cat("===============================================\n")
+print_separator()
+cat("MEMULAI SELURUH PROSES ANALISIS\n")
+print_separator()
+cat("\n")
+
+cat(
+    "Folder analytics :",
+    analytics_directory,
+    "\n"
+)
+
+cat(
+    "Folder script    :",
+    script_directory,
+    "\n"
+)
+
+cat(
+    "Folder raw       :",
+    raw_directory,
+    "\n"
+)
+
+
+# ============================================================
+# MEMBERSIHKAN HASIL GENERATE LAMA
+# ============================================================
+
+if (
+    isTRUE(
+        CLEAN_GENERATED_OUTPUTS
+    )
+) {
+    cat("\n")
+    print_separator("-")
+    cat("MEMBERSIHKAN HASIL ANALISIS LAMA\n")
+    print_separator("-")
+    cat("\n")
+
+    # Hanya menghapus hasil generate.
+    # Folder data/raw tidak disentuh.
+
+    remove_generated_directory(
+        processed_directory,
+        "processed"
+    )
+
+    remove_generated_directory(
+        output_directory,
+        "output"
+    )
+
+    dir.create(
+        file.path(
+            output_directory,
+            "figures"
+        ),
+        recursive = TRUE,
+        showWarnings = FALSE
+    )
+
+    dir.create(
+        file.path(
+            output_directory,
+            "tables"
+        ),
+        recursive = TRUE,
+        showWarnings = FALSE
+    )
+
+    cat("\n")
+    cat(
+        "Data raw tetap aman:",
+        raw_directory,
+        "\n"
+    )
+} else {
+    cat("\n")
+    cat(
+        "Cleanup dilewati karena ",
+        "CLEAN_GENERATED_OUTPUTS = FALSE.\n"
+    )
+}
+
+
+# ============================================================
+# DAFTAR SCRIPT ANALISIS
+# ============================================================
+
+scripts <- c(
+    "00_setup.R",
+    "01_import_clean.R",
+    "02_descriptive.R",
+    "03_compare_attempts.R",
+    "04_adaptive_wrs.R",
+    "05_question_classification.R",
+    "06_export_results.R"
+)
+
+
+# ============================================================
+# VALIDASI SELURUH SCRIPT TERSEDIA
+# ============================================================
+
+missing_scripts <- scripts[
+    !file.exists(
+        scripts
+    )
+]
+
+if (
+    length(
+        missing_scripts
+    ) > 0
+) {
+    stop(
+        paste0(
+            "Script berikut tidak ditemukan:\n- ",
+            paste(
+                missing_scripts,
+                collapse = "\n- "
+            )
+        )
+    )
+}
+
+
+# ============================================================
+# MENJALANKAN SELURUH SCRIPT
+# ============================================================
+
+analysis_start_time <- Sys.time()
+
+for (
+    script_path in scripts
+) {
+    run_analysis_script(
+        script_path
+    )
+}
+
+analysis_end_time <- Sys.time()
+
+analysis_duration <- difftime(
+    analysis_end_time,
+    analysis_start_time,
+    units = "secs"
+)
+
+
+# ============================================================
+# VALIDASI HASIL AKHIR
+# ============================================================
+
+final_excel_file <- file.path(
+    output_directory,
+    "hasil_analisis_bab_4.xlsx"
+)
+
+summary_text_file <- file.path(
+    output_directory,
+    "ringkasan_hasil_analisis.txt"
+)
+
+if (
+    !file.exists(
+        final_excel_file
+    )
+) {
+    warning(
+        paste0(
+            "Workbook final belum ditemukan: ",
+            final_excel_file
+        )
+    )
+}
+
+if (
+    !file.exists(
+        summary_text_file
+    )
+) {
+    warning(
+        paste0(
+            "Ringkasan analisis belum ditemukan: ",
+            summary_text_file
+        )
+    )
+}
+
+
+# ============================================================
+# INFORMASI HASIL
+# ============================================================
+
+cat("\n")
+print_separator()
 cat("SELURUH ANALISIS SELESAI\n")
-cat("===============================================\n")
+print_separator()
+cat("\n")
+
 cat(
-    "Hasil Excel: analytics/output/hasil_analisis_bab_4.xlsx\n"
+    "Durasi analisis :",
+    round(
+        as.numeric(
+            analysis_duration
+        ),
+        2
+    ),
+    "detik\n"
 )
+
 cat(
-    "Ringkasan: analytics/output/ringkasan_hasil_analisis.txt\n"
+    "Hasil Excel     :",
+    final_excel_file,
+    "\n"
 )
+
 cat(
-    "Grafik: analytics/output/figures/\n"
+    "Ringkasan       :",
+    summary_text_file,
+    "\n"
 )
+
 cat(
-    "Tabel: analytics/output/tables/\n"
+    "Grafik          :",
+    file.path(
+        output_directory,
+        "figures"
+    ),
+    "\n"
 )
-cat("===============================================\n")
+
+cat(
+    "Tabel           :",
+    file.path(
+        output_directory,
+        "tables"
+    ),
+    "\n"
+)
+
+cat(
+    "Data processed  :",
+    processed_directory,
+    "\n"
+)
+
+cat("\n")
+cat(
+    "Folder data/raw tidak dihapus.\n"
+)
+
+print_separator()

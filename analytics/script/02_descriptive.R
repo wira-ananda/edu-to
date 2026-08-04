@@ -582,6 +582,9 @@ save_figure(
 # ANALISIS KUESIONER SISWA
 # ============================================================
 
+VALIDITY_ALPHA <- 0.05
+RELIABILITY_THRESHOLD <- 0.70
+
 interpret_likert <- function(value) {
     dplyr::case_when(
         is.na(value) ~ NA_character_,
@@ -590,6 +593,260 @@ interpret_likert <- function(value) {
         value <= 3.40 ~ "Sedang",
         value <= 4.20 ~ "Tinggi",
         TRUE ~ "Sangat Tinggi"
+    )
+}
+
+interpret_reliability <- function(value) {
+    dplyr::case_when(
+        is.na(value) ~ "Tidak dapat dihitung",
+        value < 0.60 ~ "Rendah",
+        value < 0.70 ~ "Cukup",
+        value < 0.80 ~ "Baik",
+        value < 0.90 ~ "Sangat baik",
+        TRUE ~ "Sangat tinggi"
+    )
+}
+
+calculate_r_critical <- function(
+  sample_size,
+  alpha = VALIDITY_ALPHA
+) {
+    if (
+        is.na(sample_size) ||
+            sample_size <= 2
+    ) {
+        return(NA_real_)
+    }
+
+    degrees_of_freedom <-
+        sample_size - 2
+
+    t_critical <- stats::qt(
+        1 - alpha / 2,
+        df = degrees_of_freedom
+    )
+
+    sqrt(
+        t_critical^2 /
+            (
+                t_critical^2 +
+                    degrees_of_freedom
+            )
+    )
+}
+
+calculate_item_validity <- function(
+  data,
+  item_columns,
+  alpha = VALIDITY_ALPHA
+) {
+    item_data <- data |>
+        dplyr::select(
+            dplyr::all_of(
+                item_columns
+            )
+        ) |>
+        dplyr::mutate(
+            dplyr::across(
+                dplyr::everything(),
+                ~ suppressWarnings(
+                    as.numeric(.x)
+                )
+            )
+        )
+
+    purrr::map_dfr(
+        item_columns,
+        function(item_name) {
+            other_items <- setdiff(
+                item_columns,
+                item_name
+            )
+
+            if (length(other_items) == 0) {
+                return(
+                    tibble::tibble(
+                        item = item_name,
+                        sample_size = 0L,
+                        r_count = NA_real_,
+                        r_table = NA_real_,
+                        p_value = NA_real_,
+                        correlation_direction =
+                            NA_character_,
+                        validity_status =
+                            "Tidak dapat diuji",
+                        information =
+                            "Minimal diperlukan dua item."
+                    )
+                )
+            }
+
+            other_item_data <-
+                item_data[
+                    other_items
+                ]
+
+            complete_other_items <-
+                stats::complete.cases(
+                    other_item_data
+                )
+
+            corrected_total_score <- rep(
+                NA_real_,
+                nrow(item_data)
+            )
+
+            corrected_total_score[
+                complete_other_items
+            ] <- rowSums(
+                other_item_data[
+                    complete_other_items,
+                    ,
+                    drop = FALSE
+                ],
+                na.rm = FALSE
+            )
+
+            item_score <-
+                item_data[[item_name]]
+
+            valid_rows <- stats::complete.cases(
+                item_score,
+                corrected_total_score
+            )
+
+            sample_size <- sum(valid_rows)
+
+            item_values <-
+                item_score[valid_rows]
+
+            total_values <-
+                corrected_total_score[
+                    valid_rows
+                ]
+
+            enough_variation <-
+                sample_size >= 3 &&
+                dplyr::n_distinct(
+                    item_values
+                ) >= 2 &&
+                dplyr::n_distinct(
+                    total_values
+                ) >= 2
+
+            if (!enough_variation) {
+                return(
+                    tibble::tibble(
+                        item = item_name,
+                        sample_size =
+                            as.integer(
+                                sample_size
+                            ),
+                        r_count = NA_real_,
+                        r_table =
+                            calculate_r_critical(
+                                sample_size,
+                                alpha
+                            ),
+                        p_value = NA_real_,
+                        correlation_direction =
+                            NA_character_,
+                        validity_status =
+                            "Tidak dapat diuji",
+                        information = paste(
+                            "Data valid atau variasi skor",
+                            "tidak mencukupi."
+                        )
+                    )
+                )
+            }
+
+            correlation_test <- tryCatch(
+                stats::cor.test(
+                    item_values,
+                    total_values,
+                    method = "pearson",
+                    alternative =
+                        "two.sided"
+                ),
+                error = function(error) {
+                    NULL
+                }
+            )
+
+            if (is.null(correlation_test)) {
+                return(
+                    tibble::tibble(
+                        item = item_name,
+                        sample_size =
+                            as.integer(
+                                sample_size
+                            ),
+                        r_count = NA_real_,
+                        r_table =
+                            calculate_r_critical(
+                                sample_size,
+                                alpha
+                            ),
+                        p_value = NA_real_,
+                        correlation_direction =
+                            NA_character_,
+                        validity_status =
+                            "Tidak dapat diuji",
+                        information =
+                            "Uji korelasi gagal dijalankan."
+                    )
+                )
+            }
+
+            r_count <- unname(
+                correlation_test$estimate
+            )
+
+            p_value <-
+                correlation_test$p.value
+
+            r_table <- calculate_r_critical(
+                sample_size,
+                alpha
+            )
+
+            is_valid <-
+                !is.na(r_count) &&
+                !is.na(r_table) &&
+                r_count > 0 &&
+                r_count > r_table &&
+                p_value < alpha
+
+            tibble::tibble(
+                item = item_name,
+                sample_size =
+                    as.integer(
+                        sample_size
+                    ),
+                r_count = r_count,
+                r_table = r_table,
+                p_value = p_value,
+                correlation_direction =
+                    dplyr::case_when(
+                        r_count > 0 ~ "Positif",
+                        r_count < 0 ~ "Negatif",
+                        TRUE ~ "Nol"
+                    ),
+                validity_status =
+                    dplyr::if_else(
+                        is_valid,
+                        "Valid",
+                        "Tidak valid"
+                    ),
+                information = paste(
+                    "Kriteria: r hitung > r tabel,",
+                    "p-value <",
+                    alpha,
+                    "dan korelasi positif."
+                )
+            )
+        }
     )
 }
 
@@ -628,6 +885,118 @@ analyse_questionnaire <- function(
         return(NULL)
     }
 
+    data <- data |>
+        dplyr::mutate(
+            dplyr::across(
+                dplyr::all_of(
+                    item_columns
+                ),
+                ~ suppressWarnings(
+                    as.numeric(.x)
+                )
+            )
+        )
+
+    invalid_likert_values <- data |>
+        dplyr::select(
+            dplyr::all_of(
+                item_columns
+            )
+        ) |>
+        unlist(
+            use.names = FALSE
+        )
+
+    invalid_likert_count <- sum(
+        !is.na(invalid_likert_values) &
+            !invalid_likert_values %in% 1:5
+    )
+
+    if (invalid_likert_count > 0) {
+        warning(
+            invalid_likert_count,
+            " skor kuesioner berada di luar rentang 1-5."
+        )
+
+        data <- data |>
+            dplyr::mutate(
+                dplyr::across(
+                    dplyr::all_of(
+                        item_columns
+                    ),
+                    ~ dplyr::if_else(
+                        .x %in% 1:5,
+                        .x,
+                        NA_real_
+                    )
+                )
+            )
+    }
+
+    # --------------------------------------------------------
+    # Uji validitas item
+    # Corrected item-total correlation:
+    # skor satu item dikorelasikan dengan total item lainnya.
+    # --------------------------------------------------------
+
+    item_validity <- calculate_item_validity(
+        data,
+        item_columns,
+        alpha = VALIDITY_ALPHA
+    )
+
+    validity_summary <- tibble::tibble(
+        respondent_type = respondent_type,
+        total_respondents = nrow(data),
+        total_items = length(
+            item_columns
+        ),
+        tested_items = sum(
+            item_validity$
+                validity_status !=
+                "Tidak dapat diuji"
+        ),
+        valid_items = sum(
+            item_validity$
+                validity_status ==
+                "Valid"
+        ),
+        invalid_items = sum(
+            item_validity$
+                validity_status ==
+                "Tidak valid"
+        ),
+        untestable_items = sum(
+            item_validity$
+                validity_status ==
+                "Tidak dapat diuji"
+        ),
+        valid_percentage =
+            dplyr::if_else(
+                tested_items > 0,
+                valid_items /
+                    tested_items *
+                    100,
+                NA_real_
+            ),
+        alpha_significance =
+            VALIDITY_ALPHA,
+        validity_method = paste(
+            "Pearson corrected item-total",
+            "correlation"
+        ),
+        validity_criterion = paste(
+            "r hitung > r tabel,",
+            "p-value <",
+            VALIDITY_ALPHA,
+            "dan korelasi positif"
+        )
+    )
+
+    # --------------------------------------------------------
+    # Statistik deskriptif item
+    # --------------------------------------------------------
+
     item_statistics <- data |>
         dplyr::select(
             dplyr::all_of(
@@ -646,6 +1015,26 @@ analyse_questionnaire <- function(
             total_responses = sum(
                 !is.na(score)
             ),
+            minimum_score = if (
+                all(is.na(score))
+            ) {
+                NA_real_
+            } else {
+                min(
+                    score,
+                    na.rm = TRUE
+                )
+            },
+            maximum_score = if (
+                all(is.na(score))
+            ) {
+                NA_real_
+            } else {
+                max(
+                    score,
+                    na.rm = TRUE
+                )
+            },
             mean_score = mean(
                 score,
                 na.rm = TRUE
@@ -677,7 +1066,22 @@ analyse_questionnaire <- function(
                 interpret_likert(
                     mean_score
                 )
+        ) |>
+        dplyr::left_join(
+            item_validity |>
+                dplyr::select(
+                    item,
+                    r_count,
+                    r_table,
+                    p_value,
+                    validity_status
+                ),
+            by = "item"
         )
+
+    # --------------------------------------------------------
+    # Statistik deskriptif setiap responden
+    # --------------------------------------------------------
 
     respondent_statistics <- data |>
         dplyr::rowwise() |>
@@ -707,22 +1111,54 @@ analyse_questionnaire <- function(
                 )
         )
 
+    all_item_scores <- unlist(
+        data[item_columns],
+        use.names = FALSE
+    )
+
+    valid_all_item_scores <-
+        all_item_scores[
+            !is.na(
+                all_item_scores
+            )
+        ]
+
     overall_statistics <- tibble::tibble(
         respondent_type = respondent_type,
         total_respondents = nrow(data),
         total_items = length(
             item_columns
         ),
+        minimum_score =
+            if (
+                length(
+                    valid_all_item_scores
+                ) > 0
+            ) {
+                min(
+                    valid_all_item_scores
+                )
+            } else {
+                NA_real_
+            },
+        maximum_score =
+            if (
+                length(
+                    valid_all_item_scores
+                ) > 0
+            ) {
+                max(
+                    valid_all_item_scores
+                )
+            } else {
+                NA_real_
+            },
         overall_mean = mean(
-            as.matrix(
-                data[item_columns]
-            ),
+            valid_all_item_scores,
             na.rm = TRUE
         ),
         overall_sd = stats::sd(
-            unlist(
-                data[item_columns]
-            ),
+            valid_all_item_scores,
             na.rm = TRUE
         )
     ) |>
@@ -732,6 +1168,10 @@ analyse_questionnaire <- function(
                     overall_mean
                 )
         )
+
+    # --------------------------------------------------------
+    # Uji reliabilitas Cronbach's Alpha
+    # --------------------------------------------------------
 
     non_constant_items <- item_columns[
         vapply(
@@ -752,11 +1192,25 @@ analyse_questionnaire <- function(
     reliability_result <- tibble::tibble(
         respondent_type = respondent_type,
         total_respondents = nrow(data),
+        total_items_available = length(
+            item_columns
+        ),
         total_items_used = length(
             non_constant_items
         ),
-        cronbach_alpha = NA_real_
+        cronbach_alpha = NA_real_,
+        reliability_threshold =
+            RELIABILITY_THRESHOLD,
+        reliable = NA,
+        interpretation =
+            "Tidak dapat dihitung",
+        information = paste(
+            "Reliabilitas dihitung setelah",
+            "reverse scoring pada tahap import."
+        )
     )
+
+    alpha_result <- NULL
 
     if (
         nrow(data) >= 2 &&
@@ -772,15 +1226,88 @@ analyse_questionnaire <- function(
                 )
             ),
             error = function(error) {
+                message(
+                    "Cronbach's Alpha gagal dihitung: ",
+                    conditionMessage(error)
+                )
+
                 NULL
             }
         )
 
         if (!is.null(alpha_result)) {
-            reliability_result$cronbach_alpha <-
+            alpha_value <-
                 alpha_result$total$raw_alpha
+
+            reliability_result$cronbach_alpha <-
+                alpha_value
+
+            reliability_result$reliable <-
+                !is.na(alpha_value) &&
+                    alpha_value >=
+                        RELIABILITY_THRESHOLD
+
+            reliability_result$interpretation <-
+                interpret_reliability(
+                    alpha_value
+                )
         }
     }
+
+    # Alpha jika item dihapus ditambahkan sebagai informasi
+    # diagnostik. Kolom ini tidak menjadi kriteria validitas.
+    if (
+        !is.null(alpha_result) &&
+            !is.null(
+                alpha_result$alpha.drop
+            )
+    ) {
+        alpha_if_deleted <-
+            alpha_result$alpha.drop |>
+            tibble::rownames_to_column(
+                "item"
+            ) |>
+            dplyr::transmute(
+                item,
+                alpha_if_item_deleted =
+                    raw_alpha
+            )
+
+        item_validity <- item_validity |>
+            dplyr::left_join(
+                alpha_if_deleted,
+                by = "item"
+            )
+    } else {
+        item_validity <-
+            item_validity |>
+            dplyr::mutate(
+                alpha_if_item_deleted =
+                    NA_real_
+            )
+    }
+
+    # --------------------------------------------------------
+    # Menyimpan tabel kuesioner
+    # --------------------------------------------------------
+
+    save_csv_table(
+        item_validity,
+        paste0(
+            "validitas_item_kuesioner_",
+            respondent_type,
+            ".csv"
+        )
+    )
+
+    save_csv_table(
+        validity_summary,
+        paste0(
+            "ringkasan_validitas_kuesioner_",
+            respondent_type,
+            ".csv"
+        )
+    )
 
     save_csv_table(
         item_statistics,
@@ -817,6 +1344,10 @@ analyse_questionnaire <- function(
             ".csv"
         )
     )
+
+    # --------------------------------------------------------
+    # Grafik kuesioner
+    # --------------------------------------------------------
 
     item_plot <- ggplot2::ggplot(
         item_statistics,
@@ -858,7 +1389,97 @@ analyse_questionnaire <- function(
         )
     )
 
+    validity_plot_data <- item_validity |>
+        dplyr::filter(
+            !is.na(r_count),
+            !is.na(r_table)
+        )
+
+    if (nrow(validity_plot_data) > 0) {
+        validity_plot <- ggplot2::ggplot(
+            validity_plot_data,
+            ggplot2::aes(
+                x = stats::reorder(
+                    item,
+                    r_count
+                ),
+                y = r_count
+            )
+        ) +
+            ggplot2::geom_col() +
+            ggplot2::geom_point(
+                ggplot2::aes(
+                    y = r_table
+                ),
+                size = 2
+            ) +
+            ggplot2::coord_flip() +
+            ggplot2::labs(
+                title = paste(
+                    "Uji Validitas Item Kuesioner",
+                    stringr::str_to_title(
+                        respondent_type
+                    )
+                ),
+                subtitle = paste(
+                    "Batang = r hitung,",
+                    "titik = r tabel"
+                ),
+                x = "Item",
+                y = "Koefisien Korelasi"
+            )
+
+        save_figure(
+            validity_plot,
+            paste0(
+                "validitas_item_kuesioner_",
+                respondent_type,
+                ".png"
+            )
+        )
+    }
+
+    message("")
+    message(
+        "Ringkasan kuesioner ",
+        respondent_type,
+        ":"
+    )
+    message(
+        "- Responden: ",
+        nrow(data)
+    )
+    message(
+        "- Item valid: ",
+        validity_summary$valid_items[[1]],
+        " dari ",
+        validity_summary$tested_items[[1]],
+        " item yang dapat diuji"
+    )
+    message(
+        "- Cronbach's Alpha: ",
+        round(
+            reliability_result$
+                cronbach_alpha[[1]],
+            4
+        )
+    )
+    message(
+        "- Status reliabilitas: ",
+        ifelse(
+            isTRUE(
+                reliability_result$
+                    reliable[[1]]
+            ),
+            "Reliabel",
+            "Belum memenuhi batas"
+        )
+    )
+
     list(
+        item_validity = item_validity,
+        validity_summary =
+            validity_summary,
         item_statistics = item_statistics,
         respondent_statistics =
             respondent_statistics,
@@ -899,6 +1520,14 @@ descriptive_workbook <- list(
 )
 
 if (!is.null(student_questionnaire_result)) {
+    descriptive_workbook$Kuesioner_Validitas_Item <-
+        student_questionnaire_result$
+            item_validity
+
+    descriptive_workbook$Kuesioner_Validitas <-
+        student_questionnaire_result$
+            validity_summary
+
     descriptive_workbook$Kuesioner_Item <-
         student_questionnaire_result$
             item_statistics

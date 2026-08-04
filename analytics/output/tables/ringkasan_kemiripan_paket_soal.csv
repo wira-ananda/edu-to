@@ -1,3 +1,0 @@
-attempt_number,total_pairs,mean_similarity,median_similarity,minimum_similarity,maximum_similarity,mean_shared_questions
-1,595,0.1986251835982853,0.2,0.034482758620689655,0.5,4.848739495798319
-2,496,0.18813504643194318,0.2,0,0.5789473684210527,4.590725806451613

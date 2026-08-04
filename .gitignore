@@ -1,75 +1,132 @@
-cat > .gitignore <<'EOF'
+# ============================================================
 # Dependencies
+# ============================================================
+
 node_modules/
 
-.vscode/
 
-# Bun
-bun-debug.log*
-bun-error.log*
-
+# ============================================================
 # Environment files
+# ============================================================
+
 .env
 .env.*
-!.env.example
 
 frontend/.env
 frontend/.env.*
-!frontend/.env.example
 
 backend/.env
 backend/.env.*
+
+!.env.example
+!frontend/.env.example
 !backend/.env.example
 
-# SvelteKit
+
+# ============================================================
+# SvelteKit frontend
+# ============================================================
+
 frontend/.svelte-kit/
 frontend/build/
 frontend/.vite/
 frontend/.vercel/
 frontend/.netlify/
 
+
+# ============================================================
 # Backend build output
+# ============================================================
+
 backend/dist/
 backend/build/
 
-# Prisma
-# Do not ignore prisma/schema.prisma
-# Do not ignore prisma/migrations
+
+# ============================================================
+# Prisma generated files
+# Jangan abaikan schema.prisma dan migrations
+# ============================================================
+
 generated/
 
+
+# ============================================================
+# Analytics raw research data
+# Berisi data asli, nama, dan ID siswa
+# ============================================================
+
+analytics/data/raw/*
+!analytics/data/raw/.gitkeep
+!analytics/data/raw/README.md
+
+
+# ============================================================
+# Analytics processed data
+# Dibuat ulang oleh run_all.R
+# ============================================================
+
+analytics/data/processed/*
+!analytics/data/processed/.gitkeep
+
+
+# ============================================================
+# Analytics generated output
+# Tabel, grafik, workbook, dan ringkasan
+# ============================================================
+
+analytics/output/*
+!analytics/output/.gitkeep
+!analytics/output/README.md
+
+
+# ============================================================
 # Logs
+# ============================================================
+
 logs/
 *.log
+bun-debug.log*
+bun-error.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# OS files
-.DS_Store
-Thumbs.db
 
-# Editor
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-.idea/
+# ============================================================
+# R temporary files
+# ============================================================
 
-# Test coverage
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+
+# ============================================================
+# Test coverage and cache
+# ============================================================
+
 coverage/
-
-# Misc
 .cache/
 .temp/
 .tmp/
-EOF
 
-.env
-.env.*
-backend/.env
-backend/.env.*
-frontend/.env
-frontend/.env.*
 
-!backend/.env.example
-!frontend/.env.example
+# ============================================================
+# Editors
+# ============================================================
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.idea/
+
+
+# ============================================================
+# OS files
+# ============================================================
+
+.DS_Store
+Thumbs.db

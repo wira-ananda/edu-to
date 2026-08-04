@@ -1,2 +1,0 @@
-log_internal_available,total_tryout_records,complete_log_records,log_coverage_percentage,valid_candidate_percentage,valid_total_weight_percentage,valid_random_value_percentage,valid_probability_percentage,selected_level_match_percentage,mean_theoretical_probability,information
-TRUE,1005,1005,100,100,100,100,100,100,0.04596936418892645,Validasi dilakukan menggunakan log internal proses pemilihan WRS.
