@@ -56,10 +56,11 @@ generated/
 # ============================================================
 
 analytics/data/raw/*
+analytics/dokumentasi/*
 !analytics/data/raw/.gitkeep
 !analytics/data/raw/README.md
 
-
+*.zip
 # ============================================================
 # Analytics processed data
 # Dibuat ulang oleh run_all.R
